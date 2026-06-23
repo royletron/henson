@@ -134,6 +134,7 @@ export function TicketPage({
 
   const c = detail.config;
   const lead = c.companions.find((x) => x.role === "soloist") ?? c.companions[0];
+  const assigned = ticket.companionId ? c.companions.find((x) => x.id === ticket.companionId) : undefined;
   const active = runs.find((r) => r.status === "running");
   const selectedRun = runs.find((r) => r.id === selectedRunId);
   const status = liveStatus?.status ?? selectedRun?.status;
@@ -171,10 +172,8 @@ export function TicketPage({
       </div>
 
       <div class="grid grid-cols-[minmax(280px,360px)_1fr] items-start gap-4">
-        <div class="card sticky top-20 self-start">
-          <a href={`#/project/${projectId}`} class="btn btn-ghost btn-sm mb-3">
-            ← board
-          </a>
+        <div class="flex flex-col self-stretch">
+          <div class="card sticky top-20">
           <div class="mb-3 flex items-center gap-2">
             <span class={`pill gap-1.5 ${statusInfo?.color ?? "text-zinc-500"}`}>
               {statusInfo?.live && <LiveDot />}
@@ -202,8 +201,16 @@ export function TicketPage({
             <span>{ticket.state}</span>
             <b class="text-zinc-400">Priority</b>
             <span>{ticket.priority}</span>
-            <b class="text-zinc-400">Assignee</b>
-            <span>{ticket.assignee || "—"}</span>
+            <b class="text-zinc-400">Companion</b>
+            <span class="inline-flex items-center gap-1.5">
+              {assigned ? (
+                <>
+                  <Avatar companion={assigned} size={18} /> {assigned.name}
+                </>
+              ) : (
+                ticket.assignee || "—"
+              )}
+            </span>
             <b class="text-zinc-400">Ticket id</b>
             <span class="font-mono">{ticket.id}</span>
           </div>
@@ -240,6 +247,11 @@ export function TicketPage({
               ))}
             </div>
           )}
+          </div>
+          <div class="flex-1" />
+          <a href={`#/project/${projectId}`} class="btn btn-ghost btn-sm sticky bottom-4 mt-3 self-start">
+            ← board
+          </a>
         </div>
 
         <div class="card">
