@@ -159,9 +159,6 @@ export function TicketPage({
   return (
     <div>
       <div class="mb-4 flex items-center gap-3">
-        <a href={`#/project/${projectId}`} class="btn btn-ghost btn-sm">
-          ← board
-        </a>
         {lead ? <Avatar companion={lead} size={34} /> : null}
         <div>
           <h1 class="text-xl font-semibold">{ticket.title}</h1>
@@ -174,6 +171,9 @@ export function TicketPage({
 
       <div class="grid grid-cols-[minmax(280px,360px)_1fr] items-start gap-4">
         <div class="card sticky top-20 self-start">
+          <a href={`#/project/${projectId}`} class="btn btn-ghost btn-sm mb-3">
+            ← board
+          </a>
           <div class="mb-3 flex items-center gap-2">
             <span class={`pill gap-1.5 ${statusInfo?.color ?? "text-zinc-500"}`}>
               {statusInfo?.live && <LiveDot />}
