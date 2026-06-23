@@ -133,9 +133,13 @@ test("resolveCommand maps yolo + allowed/disallowed tools to claude flags", () =
 
     // A companion pins a stable session id for conversation continuity.
     const comp = { id: "11111111-1111-1111-1111-111111111111", name: "Bo", role: "soloist", avatarSeed: "Bo" };
-    const withSession = resolveCommand({ ...base, yolo: false } as any, "/tmp/proj", "PROMPT", comp as any);
-    assert.ok(withSession.args.includes("--session-id"));
-    assert.ok(withSession.args.includes(comp.id));
+    // First run creates the session…
+    const first = resolveCommand({ ...base, yolo: false } as any, "/tmp/proj", "PROMPT", comp as any, false);
+    assert.ok(first.args.includes("--session-id") && first.args.includes(comp.id));
+    // …subsequent runs resume it (or Claude errors "session already in use").
+    const next = resolveCommand({ ...base, yolo: false } as any, "/tmp/proj", "PROMPT", comp as any, true);
+    assert.ok(next.args.includes("--resume") && next.args.includes(comp.id));
+    assert.ok(!next.args.includes("--session-id"));
   } finally {
     if (saved !== undefined) process.env.HENSON_AGENT_CMD = saved;
   }
@@ -191,6 +195,9 @@ test("a companion runs one ticket at a time (busy lock)", async () => {
     /busy/i,
   );
   assert.deepEqual(rm.busyCompanionIds(config.id), [config.companions[0].id]);
+  // A prior run on this machine means the companion's session exists → resume next time.
+  assert.equal(rm.companionHasLocalSession(config.companions[0].id), true);
+  assert.equal(rm.companionHasLocalSession("never-ran"), false);
   rm.stop(runA.id);
   await waitFor(() => rm.get(runA.id)?.status !== "running");
 });

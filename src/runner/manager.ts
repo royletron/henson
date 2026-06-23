@@ -76,6 +76,7 @@ export function resolveCommand(
   projectRoot: string,
   prompt: string,
   companion?: Companion,
+  resumeSession = false,
 ): {
   cmd: string;
   args: string[];
@@ -125,10 +126,13 @@ export function resolveCommand(
   }
 
   // Pin the companion to a stable session so it keeps one conversation across
-  // tickets (continuity). The per-companion lock guarantees no concurrent use of
-  // the same session. HENSON_AGENT_SESSION=0 opts out (fresh context each run).
+  // tickets (continuity). `--session-id` *creates* the session (first run);
+  // later runs must `--resume` it, or Claude errors "session already in use".
+  // The per-companion lock guarantees no concurrent use of the same session.
+  // HENSON_AGENT_SESSION=0 opts out (fresh context each run).
   const useSession = companion && process.env.HENSON_AGENT_SESSION !== "0";
-  if (useSession) args.push("--session-id", companion.id);
+  const sessionFlag = resumeSession ? "--resume" : "--session-id";
+  if (useSession) args.push(sessionFlag, companion.id);
 
   // Variadic flags go at the end.
   if (disallowed.length) args.push("--disallowedTools", ...disallowed);
@@ -140,7 +144,7 @@ export function resolveCommand(
     shell: false,
     display:
       `claude -p <ticket> --output-format stream-json --permission-mode ${mode}` +
-      (useSession ? ` --session-id ${companion.id}` : "") +
+      (useSession ? ` ${sessionFlag} ${companion.id}` : "") +
       (attachMcp ? " --mcp-config <henson> --strict-mcp-config" : "") +
       (allowed.length ? ` --allowedTools ${allowed.join(" ")}` : "") +
       (disallowed.length ? ` --disallowedTools ${disallowed.join(" ")}` : ""),
@@ -356,6 +360,15 @@ export class RunManager {
     );
   }
 
+  /**
+   * Whether a companion already has a Claude session on this machine — true if it
+   * has any prior run recorded here (sessions are local, keyed by hostname).
+   */
+  companionHasLocalSession(companionId: string): boolean {
+    const host = os.hostname();
+    return [...this.runs.values()].some((r) => r.companionId === companionId && r.hostname === host);
+  }
+
   /** Ids of companions currently running a task in a project. */
   busyCompanionIds(projectId: string): string[] {
     return [...this.runs.values()]
@@ -379,7 +392,16 @@ export class RunManager {
     const etiquette = (await readDoc(args.projectRoot, ETIQUETTE_DOC)) ?? "";
     const companionSpec = companion ? await readCompanionSpec(args.projectRoot, companion.id) : undefined;
     const prompt = buildPrompt(args.config, args.ticket, spec, etiquette, companion, companionSpec ?? undefined);
-    const { cmd, args: cmdArgs, shell, display, format } = resolveCommand(args.config, args.projectRoot, prompt, companion);
+    // If this companion has already run on this machine its Claude session
+    // exists — resume it rather than trying to recreate the same session id.
+    const resumeSession = companion ? this.companionHasLocalSession(companion.id) : false;
+    const { cmd, args: cmdArgs, shell, display, format } = resolveCommand(
+      args.config,
+      args.projectRoot,
+      prompt,
+      companion,
+      resumeSession,
+    );
 
     const run: Run = {
       id: nanoid(10),
