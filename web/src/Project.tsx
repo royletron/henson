@@ -1,0 +1,133 @@
+import { useState } from "preact/hooks";
+import { api, type ProjectDetail } from "./api";
+import { useAsync } from "./hooks";
+import { ErrorBox, Loading } from "./ui";
+import { Board } from "./Board";
+import { DocsTab, MemoryTab, PluginsTab, CompanionTab } from "./tabs";
+import type { AppEvent } from "./App";
+
+const TABS: [string, string][] = [
+  ["board", "Board"],
+  ["docs", "Docs"],
+  ["memory", "Memory"],
+  ["plugins", "Plugins & usage"],
+  ["agent", "Companion"],
+];
+
+export function Project({ projectId, evt }: { projectId: string; evt: AppEvent }) {
+  const [tab, setTab] = useState("board");
+  const [savingYolo, setSavingYolo] = useState(false);
+  const matchSeq = evt.projectId === projectId ? evt.seq : -1;
+  const { data, error, loading, reload } = useAsync(
+    () => api<ProjectDetail>(`/api/projects/${projectId}`),
+    [projectId, matchSeq],
+  );
+
+  if (loading && !data) return <Loading />;
+  if (error || !data)
+    return (
+      <div>
+        <ErrorBox message={`Could not load project: ${error}`} />
+        <div class="text-center">
+          <a href="#/" class="btn btn-ghost">
+            ← back
+          </a>
+        </div>
+      </div>
+    );
+
+  const c = data.config;
+
+  const unregister = async () => {
+    if (!confirm(`Unregister "${data.entry.name}"? This only removes it from Henson's registry — files stay on disk.`))
+      return;
+    await api(`/api/projects/${projectId}`, { method: "DELETE" });
+    location.hash = "#/";
+  };
+
+  const toggleYolo = async () => {
+    const turningOn = !c.yolo;
+    if (
+      turningOn &&
+      !confirm(
+        "Enable yolo mode?\n\nThe companion will run with --permission-mode bypassPermissions — it can edit files AND run commands (tests, git, installs) without asking. Only enable for projects you're happy to let run autonomously.",
+      )
+    )
+      return;
+    setSavingYolo(true);
+    try {
+      await api(`/api/projects/${projectId}/config`, { method: "PATCH", body: JSON.stringify({ yolo: turningOn }) });
+      reload();
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setSavingYolo(false);
+    }
+  };
+
+  return (
+    <div>
+      <div class="mb-4 flex items-center gap-3">
+        <a href="#/" class="btn btn-ghost btn-sm">
+          ←
+        </a>
+        <div class="text-3xl leading-none">{c.companion.avatar}</div>
+        <div>
+          <h1 class="text-xl font-semibold">{data.entry.name}</h1>
+          <div class="text-sm text-zinc-400">
+            {c.companion.name} · recipe: {c.companion.recipe || "solo"}
+          </div>
+        </div>
+        <div class="flex-1" />
+        <button
+          class={`btn btn-sm ${c.yolo ? "border-amber-400 text-amber-400" : "text-zinc-400"}`}
+          onClick={toggleYolo}
+          disabled={savingYolo}
+          title="Yolo: run the companion autonomously (bypass permission prompts) within the usage budget"
+        >
+          <span class={`inline-block h-2 w-2 rounded-full ${c.yolo ? "bg-amber-400" : "bg-zinc-600"}`} />
+          {c.yolo ? "⚡ Yolo on" : "Yolo off"}
+        </button>
+        <button class="btn btn-danger btn-sm" onClick={unregister}>
+          Unregister
+        </button>
+      </div>
+
+      {data.pendingDocSync && (
+        <div class="card mb-3.5 flex items-center gap-3 border-cyan-400">
+          <span>📝 Docs changed since last review — the companion should re-read the spec and pull any new tickets.</span>
+          <div class="flex-1" />
+          <button
+            class="btn btn-sm"
+            onClick={async () => {
+              await api(`/api/projects/${projectId}/sync-clear`, { method: "POST" });
+              reload();
+            }}
+          >
+            Mark reviewed
+          </button>
+        </div>
+      )}
+
+      <div class="mb-4 flex gap-1.5 border-b border-zinc-800">
+        {TABS.map(([key, label]) => (
+          <button
+            key={key}
+            class={`cursor-pointer border-b-2 px-4 py-2 ${
+              tab === key ? "border-violet-500 text-zinc-100" : "border-transparent text-zinc-400"
+            }`}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "board" && <Board detail={data} evt={evt} reload={reload} />}
+      {tab === "docs" && <DocsTab detail={data} />}
+      {tab === "memory" && <MemoryTab detail={data} />}
+      {tab === "plugins" && <PluginsTab detail={data} />}
+      {tab === "agent" && <CompanionTab detail={data} />}
+    </div>
+  );
+}

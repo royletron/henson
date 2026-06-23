@@ -2,6 +2,8 @@ import { useEffect, useState } from "preact/hooks";
 import {
   RUN_STATUS,
   api,
+  fmtWhen,
+  runDuration,
   type ProjectDetail,
   type RunLine,
   type RunStatus,
@@ -75,8 +77,10 @@ export function TicketPage({
     setLiveStatus(null);
   }, [selectedRunId]);
 
-  // Stream the selected run (auto-closes when the run finishes).
+  // Stream the selected run (auto-closes when the run finishes or the tab is
+  // backgrounded; replays the buffer on reconnect, hence onReset).
   useRunStream(selectedRunId, {
+    onReset: () => setLines([]),
     onLine: (line) => setLines((ls) => [...ls, line]),
     onStatus: (status, exitCode) => {
       setLiveStatus({ status, exitCode });
@@ -227,25 +231,6 @@ export function TicketPage({
       </div>
     </div>
   );
-}
-
-/** "14:32:10" for runs started today, otherwise "23 Jun, 14:32". */
-function fmtWhen(iso: string): string {
-  const d = new Date(iso);
-  const today = new Date();
-  const sameDay = d.toDateString() === today.toDateString();
-  return sameDay
-    ? d.toLocaleTimeString()
-    : `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })}, ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
-}
-
-/** Human-readable wall-clock duration of a finished run (e.g. "1m 12s"). */
-function runDuration(r: RunSummary): string {
-  if (!r.endedAt) return "";
-  const ms = new Date(r.endedAt).getTime() - new Date(r.startedAt).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return "";
-  const s = Math.round(ms / 1000);
-  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
 /** A single agent-log line, coloured by stream and the event prefix we render. */

@@ -1,0 +1,62 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@layer base {
+  body {
+    @apply bg-zinc-950 text-zinc-100 antialiased;
+    background-image: radial-gradient(1200px 600px at 80% -10%, rgb(26 31 46) 0%, rgb(9 9 11) 55%);
+    min-height: 100vh;
+  }
+  a {
+    @apply text-inherit no-underline;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-sm border border-zinc-800 bg-zinc-900/60 p-4 shadow-lg shadow-black/30;
+  }
+  .btn {
+    @apply inline-flex cursor-pointer items-center gap-1.5 rounded-sm border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 transition hover:border-violet-500 active:translate-y-px disabled:cursor-default disabled:opacity-50;
+  }
+  .btn-sm {
+    @apply px-2 py-1 text-xs;
+  }
+  .btn-primary {
+    @apply border-violet-500 bg-violet-600 font-semibold text-white hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply border-transparent bg-transparent;
+  }
+  .btn-danger {
+    @apply hover:border-red-500 hover:text-red-400;
+  }
+  .input {
+    @apply w-full rounded-sm border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-violet-500;
+  }
+  .field-label {
+    @apply mt-3 mb-1 block text-xs text-zinc-400;
+  }
+  .pill {
+    @apply inline-flex items-center rounded-full border border-zinc-700 px-2 py-0.5 text-xs;
+  }
+  .tag {
+    @apply inline-flex items-center rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-xs text-zinc-400;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400;
+  }
+  .drawer {
+    @apply fixed right-0 top-0 z-50 flex h-full w-full max-w-lg flex-col border-l border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/50;
+    animation: drawer-in 0.18s ease-out;
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
