@@ -1,12 +1,12 @@
 ---
 title: 'Agent View: Sticky info'
-state: review
+state: done
 priority: medium
 assignee: Waldorf the Compiler
 labels:
   - design
 created: '2026-06-23T16:55:41.804Z'
-updated: '2026-06-23T17:30:39.573Z'
+updated: '2026-06-23T21:39:55.224Z'
 ---
 
 It would be good if we could have all the info in the sidebar on the left and then just page scroll the output from the agent

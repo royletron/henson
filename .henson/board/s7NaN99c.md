@@ -1,11 +1,11 @@
 ---
 title: Agent History UI
-state: review
+state: done
 priority: medium
 assignee: Waldorf the Compiler
 labels: []
 created: '2026-06-23T17:31:47.087Z'
-updated: '2026-06-23T17:38:47.445Z'
+updated: '2026-06-23T21:39:56.132Z'
 ---
 
 now we have the history of agents, can we show it on tickets? We might need a better ticket UI than this current modal approach - maybe something like GitHubs side panel?

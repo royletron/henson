@@ -1,12 +1,12 @@
 ---
 title: Markdown Editor
-state: review
+state: done
 priority: medium
 assignee: Waldorf the Compiler
 labels:
   - design
 created: '2026-06-23T16:53:24.908Z'
-updated: '2026-06-23T18:05:00.000Z'
+updated: '2026-06-23T21:39:54.401Z'
 ---
 
 Can we get some sort of syntax highlighted Markdown editor? We can then replace what we have on the docs page with that - I think codemirror does a good job but maybe there is something better?
