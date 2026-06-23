@@ -1,0 +1,35 @@
+import os from "node:os";
+import path from "node:path";
+
+/** Root of the central Henson config (registry, global plugin state). */
+export function hensonHome(): string {
+  return process.env.HENSON_HOME ?? path.join(os.homedir(), ".henson");
+}
+
+export function registryPath(): string {
+  return path.join(hensonHome(), "registry.json");
+}
+
+/** The per-project Henson directory, e.g. <project>/.henson */
+export function projectHensonDir(projectRoot: string): string {
+  return path.join(projectRoot, ".henson");
+}
+
+export function projectConfigPath(projectRoot: string): string {
+  return path.join(projectHensonDir(projectRoot), "config.json");
+}
+
+export function boardDir(projectRoot: string): string {
+  return path.join(projectHensonDir(projectRoot), "board");
+}
+
+export function docsDir(projectRoot: string): string {
+  return path.join(projectHensonDir(projectRoot), "docs");
+}
+
+export function memoryDir(projectRoot: string): string {
+  return path.join(projectHensonDir(projectRoot), "memory");
+}
+
+export const ETIQUETTE_DOC = "ETIQUETTE.md";
+export const SPEC_DOC = "SPEC.md";

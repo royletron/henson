@@ -1,0 +1,88 @@
+import assert from "node:assert/strict";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { after, before, test } from "node:test";
+
+// Point Henson at throwaway dirs before importing modules that read env at call time.
+const tmp = path.join(os.tmpdir(), `henson-test-${process.pid}`);
+process.env.HENSON_HOME = path.join(tmp, "home");
+process.env.CLAUDE_PROJECTS_DIR = path.join(tmp, "claude");
+
+const { initProject, loadProjectConfig } = await import("../src/core/project.js");
+const { createTicket, listTickets, nextTicket, updateTicket } = await import("../src/core/board.js");
+const { readDoc, writeDoc } = await import("../src/core/docs.js");
+const { loadRegistry } = await import("../src/core/registry.js");
+const { usageInWindow } = await import("../src/plugins/usage-monitor/usage.js");
+
+const projectRoot = path.join(tmp, "proj");
+
+before(async () => {
+  await fs.mkdir(projectRoot, { recursive: true });
+});
+after(async () => {
+  await fs.rm(tmp, { recursive: true, force: true });
+});
+
+test("initProject scaffolds config, docs and registers", async () => {
+  const config = await initProject(projectRoot, { name: "Demo" });
+  assert.equal(config.name, "Demo");
+  assert.ok(config.companion.name.length > 0);
+  assert.ok(config.companion.avatar.length > 0);
+  assert.ok(config.plugins.includes("usage-monitor"));
+
+  const spec = await readDoc(projectRoot, "SPEC.md");
+  assert.match(spec ?? "", /# Demo/);
+  const etiquette = await readDoc(projectRoot, "ETIQUETTE.md");
+  assert.match(etiquette ?? "", /Always commit/);
+
+  const reg = await loadRegistry();
+  assert.equal(reg.projects.filter((p) => p.path === projectRoot).length, 1);
+
+  // Idempotent.
+  const again = await initProject(projectRoot);
+  assert.equal(again.id, config.id);
+  assert.deepEqual(await loadProjectConfig(projectRoot), config);
+});
+
+test("tickets: create, list (priority sorted), update, next", async () => {
+  await createTicket(projectRoot, { title: "low one", priority: "low", state: "ready" });
+  const hi = await createTicket(projectRoot, { title: "high one", priority: "high", state: "ready" });
+
+  const ready = await listTickets(projectRoot, { state: "ready" });
+  assert.equal(ready[0].id, hi.id, "high priority should sort first");
+
+  const claimed = await nextTicket(projectRoot, { claim: true, assignee: "Kermit" });
+  assert.equal(claimed?.id, hi.id);
+  assert.equal(claimed?.state, "in-progress");
+  assert.equal(claimed?.assignee, "Kermit");
+
+  const moved = await updateTicket(projectRoot, hi.id, { state: "done" });
+  assert.equal(moved?.state, "done");
+  assert.equal((await listTickets(projectRoot, { state: "done" })).length, 1);
+});
+
+test("docs round-trip with path-traversal guard", async () => {
+  await writeDoc(projectRoot, "DESIGN", "# design\nbody");
+  assert.match((await readDoc(projectRoot, "DESIGN.md")) ?? "", /# design/);
+  await assert.rejects(() => writeDoc(projectRoot, "../escape.md", "x"));
+});
+
+test("usage parser sums tokens within the window", async () => {
+  const dir = path.join(tmp, "claude", "some-project");
+  await fs.mkdir(dir, { recursive: true });
+  const recent = new Date().toISOString();
+  const old = new Date(Date.now() - 10 * 3600_000).toISOString();
+  const lines = [
+    JSON.stringify({ timestamp: recent, message: { usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 10, cache_read_input_tokens: 999 } } }),
+    JSON.stringify({ timestamp: old, message: { usage: { input_tokens: 9999, output_tokens: 9999 } } }),
+    "not json",
+  ].join("\n");
+  await fs.writeFile(path.join(dir, "session.jsonl"), lines);
+
+  const w = await usageInWindow(5);
+  assert.equal(w.inputTokens, 100);
+  assert.equal(w.outputTokens, 50);
+  assert.equal(w.billableTokens, 160, "input+output+cacheCreation, excluding the out-of-window entry");
+  assert.equal(w.messages, 1);
+});
