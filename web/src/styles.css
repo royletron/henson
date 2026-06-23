@@ -128,3 +128,38 @@
     animation: none;
   }
 }
+
+/* Prism markdown token colours for the CodeEditor highlight layer (palette-aligned). */
+.md-hl .token.title,
+.md-hl .token.title .token.punctuation {
+  color: #f4f4f5;
+  font-weight: 600;
+}
+.md-hl .token.bold {
+  color: #f4f4f5;
+  font-weight: 600;
+}
+.md-hl .token.italic {
+  font-style: italic;
+}
+.md-hl .token.code,
+.md-hl .token.code-snippet {
+  color: #ffd454;
+}
+.md-hl .token.url,
+.md-hl .token.url .token.content,
+.md-hl .token.url-reference {
+  color: #b98cff;
+}
+.md-hl .token.list.punctuation {
+  color: #b98cff;
+}
+.md-hl .token.blockquote.punctuation {
+  color: #71717a;
+}
+.md-hl .token.hr.punctuation {
+  color: #52525b;
+}
+.md-hl .token.punctuation {
+  color: #71717a;
+}
