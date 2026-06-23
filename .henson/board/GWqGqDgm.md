@@ -6,7 +6,7 @@ assignee: Waldorf the Compiler
 labels:
   - design
 created: '2026-06-23T16:52:30.545Z'
-updated: '2026-06-23T18:00:00.000Z'
+updated: '2026-06-23T18:02:33.048Z'
 ---
 
 Can we get rid of some of this corner radius stuff?
