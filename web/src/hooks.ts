@@ -36,6 +36,18 @@ export function navigate(hash: string): void {
   location.hash = hash;
 }
 
+/** Current epoch ms, re-rendering every `intervalMs` while `active` — for live timers. */
+export function useNow(active: boolean, intervalMs = 1000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [active, intervalMs]);
+  return now;
+}
+
 export interface AsyncState<T> {
   data?: T;
   error?: string;

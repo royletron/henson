@@ -3,7 +3,6 @@ import {
   RUN_STATUS,
   api,
   fmtWhen,
-  runDuration,
   type ProjectDetail,
   type RunLine,
   type RunStatus,
@@ -11,7 +10,7 @@ import {
   type Ticket,
 } from "./api";
 import { useAsync, useRunStream } from "./hooks";
-import { ErrorBox, LiveDot, Loading } from "./ui";
+import { ErrorBox, LiveDot, Loading, RunTimer } from "./ui";
 import { Avatar } from "./Avatar";
 import type { AppEvent } from "./App";
 
@@ -187,6 +186,7 @@ export function TicketPage({
             <span class="inline-flex items-center gap-1.5 text-sm text-zinc-500">
               {active && <LiveDot class="text-amber-400" />}
               {active ? "Agent is working…" : "Press Run to start the companion."}
+              {active && <RunTimer run={active} class="text-amber-400" />}
             </span>
           </div>
           <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
@@ -225,7 +225,7 @@ export function TicketPage({
                   </span>
                   <span class="text-zinc-500">
                     {fmtWhen(r.startedAt)}
-                    {runDuration(r) ? ` · ${runDuration(r)}` : ""}
+                    <RunTimer run={r} prefix=" · " />
                   </span>
                 </button>
               ))}

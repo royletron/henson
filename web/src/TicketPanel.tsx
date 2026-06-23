@@ -5,7 +5,6 @@ import {
   STATE_LABELS,
   api,
   fmtWhen,
-  runDuration,
   type Companion,
   type RunSummary,
   type Ticket,
@@ -13,7 +12,7 @@ import {
   type TicketState,
 } from "./api";
 import { useAsync } from "./hooks";
-import { LiveDot } from "./ui";
+import { LiveDot, RunTimer } from "./ui";
 import type { AppEvent } from "./App";
 
 /** Absolute URL to a ticket's agent view, optionally autostarting a run. */
@@ -222,7 +221,6 @@ function AgentHistory({ projectId, ticketId, evt }: { projectId: string; ticketI
         <div class="flex flex-col gap-1.5">
           {runs.map((r) => {
             const s = RUN_STATUS[r.status];
-            const dur = runDuration(r);
             return (
               <a
                 key={r.id}
@@ -240,7 +238,7 @@ function AgentHistory({ projectId, ticketId, evt }: { projectId: string; ticketI
                   <span>{r.companion}</span>
                   <span>·</span>
                   <span>{fmtWhen(r.startedAt)}</span>
-                  {dur && <span>· {dur}</span>}
+                  <RunTimer run={r} prefix="· " />
                   {r.logAvailable === false && <span title={`Ran on ${r.hostname}; logs are local to that machine`}>🖥 {r.hostname}</span>}
                 </span>
               </a>

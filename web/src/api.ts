@@ -221,11 +221,20 @@ export function fmtWhen(iso: string): string {
     : `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })}, ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
 }
 
-/** Human-readable wall-clock duration of a finished run (e.g. "1m 12s"). */
-export function runDuration(r: { startedAt: string; endedAt?: string }): string {
-  if (!r.endedAt) return "";
-  const ms = new Date(r.endedAt).getTime() - new Date(r.startedAt).getTime();
+/** Human-readable elapsed time, e.g. "42s", "1m 12s", "2h 5m", "1d 3h". */
+export function formatDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return "";
   const s = Math.round(ms / 1000);
-  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}
+
+/** Elapsed time of a run — live against `now` while running, final once it ends. */
+export function runElapsed(r: { startedAt: string; endedAt?: string }, now: number): string {
+  const end = r.endedAt ? new Date(r.endedAt).getTime() : now;
+  return formatDuration(end - new Date(r.startedAt).getTime());
 }

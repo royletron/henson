@@ -16,7 +16,7 @@ import { useAsync } from "./hooks";
 import { Markdown } from "./Markdown";
 import { CodeEditor } from "./CodeEditor";
 import { Avatar } from "./Avatar";
-import { LiveDot, Modal } from "./ui";
+import { LiveDot, Modal, RunTimer } from "./ui";
 
 type DocMode = "preview" | "split" | "edit";
 
@@ -525,7 +525,8 @@ function CompanionRow({
               href={`#/project/${projectId}/ticket/${activeRun.ticketId}`}
               title="See what they're doing"
             >
-              <LiveDot /> working: {activeRun.ticketTitle} — view live →
+              <LiveDot /> working: {activeRun.ticketTitle}
+              <RunTimer run={activeRun} prefix=" · " /> — view live →
             </a>
           ) : (
             <div class="text-xs text-zinc-500">{companion.role} · idle</div>
