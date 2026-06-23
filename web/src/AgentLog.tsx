@@ -1,5 +1,6 @@
-import { useMemo, useState } from "preact/hooks";
-import type { RunLine } from "./api";
+import { useEffect, useMemo, useState } from "preact/hooks";
+import type { Companion, RunLine } from "./api";
+import { Avatar } from "./Avatar";
 import { Markdown } from "./Markdown";
 import { Code } from "./Code";
 import { langId } from "./highlight";
@@ -126,7 +127,7 @@ function ToolEntry({ name, arg, result }: { name: string; arg: string; result?: 
 export function AgentLog({ lines }: { lines: RunLine[] }) {
   const entries = useMemo(() => parse(lines), [lines]);
   return (
-    <div class="flex flex-col gap-1.5 font-mono text-xs leading-relaxed">
+    <div class="flex flex-col gap-3 font-mono text-xs leading-relaxed">
       {entries.map((e, i) => {
         if (e.type === "tool") return <ToolEntry key={i} name={e.name} arg={e.arg} result={e.result} />;
         if (e.type === "stderr") return <div key={i} class="whitespace-pre-wrap break-words text-red-400">{e.text}</div>;
@@ -137,6 +138,42 @@ export function AgentLog({ lines }: { lines: RunLine[] }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+const PHRASES = [
+  "reading the rules",
+  "consulting the spec",
+  "thinking it through",
+  "poking around the code",
+  "writing some code",
+  "running the tests",
+  "checking the board",
+  "wrangling types",
+  "reviewing the diff",
+  "tidying up",
+  "reticulating splines",
+];
+
+/** A live "the agent is busy" footer: the companion's avatar pulsing beside a
+ *  rotating little phrase. Show it while a run is streaming. */
+export function AgentThinking({ companion }: { companion?: Companion }) {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setI((n) => (n + 1) % PHRASES.length), 2600);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div class="flex items-center gap-2 font-mono text-xs text-zinc-400">
+      {companion && (
+        <span class="pulse">
+          <Avatar companion={companion} size={20} />
+        </span>
+      )}
+      <span>
+        <span class="text-zinc-200">{companion?.name ?? "The companion"}</span> is {PHRASES[i]}…
+      </span>
     </div>
   );
 }

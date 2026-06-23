@@ -12,7 +12,7 @@ import {
 import { useAsync, useRunStream } from "./hooks";
 import { ErrorBox, LiveDot, Loading, RunTimer } from "./ui";
 import { Avatar } from "./Avatar";
-import { AgentLog } from "./AgentLog";
+import { AgentLog, AgentThinking } from "./AgentLog";
 import type { AppEvent } from "./App";
 
 interface TicketData {
@@ -239,10 +239,18 @@ export function TicketPage({
                 <span class="text-zinc-200">{selectedRun.hostname}</span>. Its logs are local to that machine —
                 only the run record syncs via git.
               </div>
-            ) : lines.length === 0 ? (
-              <div class="font-mono text-xs text-zinc-600">Waiting for the agent…</div>
             ) : (
-              <AgentLog lines={lines} />
+              <>
+                {lines.length === 0 && status !== "running" && (
+                  <div class="font-mono text-xs text-zinc-600">Waiting for the agent…</div>
+                )}
+                {lines.length > 0 && <AgentLog lines={lines} />}
+                {status === "running" && (
+                  <div class={lines.length > 0 ? "mt-3" : ""}>
+                    <AgentThinking companion={lead} />
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
