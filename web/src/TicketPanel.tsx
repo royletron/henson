@@ -16,9 +16,8 @@ import { useAsync } from "./hooks";
 import { LiveDot, RunTimer } from "./ui";
 import type { AppEvent } from "./App";
 
-/** Absolute URL to a ticket's agent view, optionally autostarting a run. */
 function agentViewUrl(projectId: string, ticketId: string, run = false): string {
-  return `${location.origin}${location.pathname}#/project/${projectId}/ticket/${ticketId}${run ? "/run" : ""}`;
+  return `#/project/${projectId}/ticket/${ticketId}${run ? "/run" : ""}`;
 }
 
 /**
@@ -290,8 +289,6 @@ function AgentHistory({ projectId, ticketId, evt }: { projectId: string; ticketI
         <a
           class="btn btn-sm text-emerald-400"
           href={agentViewUrl(projectId, ticketId, !active)}
-          target="_blank"
-          rel="noopener noreferrer"
           title={active ? "An agent is already working — open the live view" : "Run an agent on this ticket"}
         >
           {active ? (
@@ -315,8 +312,6 @@ function AgentHistory({ projectId, ticketId, evt }: { projectId: string; ticketI
               <a
                 key={r.id}
                 href={agentViewUrl(projectId, ticketId)}
-                target="_blank"
-                rel="noopener noreferrer"
                 title={r.command}
                 class="flex items-center justify-between gap-2 rounded-sm border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-400 hover:border-violet-500"
               >

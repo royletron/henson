@@ -92,7 +92,7 @@ export function App() {
       <main class="w-full flex-1 p-6">
         {route.name === "home" && <Home evt={evt} />}
         {route.name === "project" && route.projectId && (
-          <Project key={route.projectId} projectId={route.projectId} evt={evt} />
+          <Project key={route.projectId} projectId={route.projectId} tab={route.tab} evt={evt} />
         )}
         {route.name === "ticket" && route.projectId && route.ticketId && (
           <TicketPage

@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import { api, type ProjectDetail, type Ticket } from "./api";
-import { useAsync } from "./hooks";
+import { navigate, useAsync } from "./hooks";
 import { ErrorBox, Loading } from "./ui";
 import { Board } from "./Board";
 import { TicketPanel } from "./TicketPanel";
@@ -18,8 +18,8 @@ const TABS: [string, string][] = [
   ["bin", "Bin"],
 ];
 
-export function Project({ projectId, evt }: { projectId: string; evt: AppEvent }) {
-  const [tab, setTab] = useState("board");
+export function Project({ projectId, tab: urlTab, evt }: { projectId: string; tab?: string; evt: AppEvent }) {
+  const tab = urlTab || "board";
   const [savingYolo, setSavingYolo] = useState(false);
   const [editing, setEditing] = useState<Ticket | "new" | null>(null);
   const matchSeq = evt.projectId === projectId ? evt.seq : -1;
@@ -122,15 +122,15 @@ export function Project({ projectId, evt }: { projectId: string; evt: AppEvent }
 
       <div class="sticky top-[52px] z-10 -mx-6 mb-4 flex items-center gap-1.5 border-b border-zinc-800 bg-zinc-950/80 px-6 backdrop-blur">
         {TABS.map(([key, label]) => (
-          <button
+          <a
             key={key}
+            href={`#/project/${projectId}/${key}`}
             class={`cursor-pointer border-b-2 px-4 py-2 ${
-              tab === key ? "border-violet-500 text-zinc-100" : "border-transparent text-zinc-400"
+              tab === key ? "border-violet-500 text-zinc-100" : "border-transparent text-zinc-400 hover:text-zinc-200"
             }`}
-            onClick={() => setTab(key)}
           >
             {label}
-          </button>
+          </a>
         ))}
         <div class="flex-1" />
         {tab === "board" && (

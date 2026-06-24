@@ -8,12 +8,9 @@ import {
   type Ticket,
   type TicketState,
 } from "./api";
+import { navigate } from "./hooks";
 import { Avatar } from "./Avatar";
 import { LiveDot } from "./ui";
-
-function runTicketUrl(projectId: string, ticketId: string): string {
-  return `${location.origin}${location.pathname}#/project/${projectId}/ticket/${ticketId}/run`;
-}
 
 export function Board({
   detail,
@@ -129,7 +126,7 @@ function TicketCard({
           }
           onClick={(e) => {
             e.stopPropagation();
-            if (!busy) window.open(runTicketUrl(projectId, t.id), "_blank");
+            if (!busy) navigate(`#/project/${projectId}/ticket/${t.id}/run`);
           }}
         >
           {running ? <LiveDot /> : "▶"}
