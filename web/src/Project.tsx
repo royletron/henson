@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useRef, useState } from "preact/hooks";
 import { api, type ProjectDetail, type Ticket } from "./api";
 import { navigate, useAsync } from "./hooks";
 import { ErrorBox, Loading } from "./ui";
@@ -26,18 +26,21 @@ export function Project({ projectId, tab: urlTab, evt }: { projectId: string; ta
   // The tab bar is sticky under the 52px app header. We only want its solid
   // backdrop once it's actually stuck — otherwise its black bg covers the page
   // gradient. A zero-height sentinel sits just above the bar; when it scrolls
-  // past the 52px line (rootMargin top), the bar is stuck.
-  const sentinelRef = useRef<HTMLDivElement>(null);
+  // past the 52px line (rootMargin top), the bar is stuck. We attach the
+  // observer via a callback ref so it binds whenever the sentinel mounts — the
+  // sentinel only appears after the project data loads (past the loading
+  // early-return), so a mount-time useEffect would bind too early and miss it.
   const [stuck, setStuck] = useState(false);
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const sentinelRef = useCallback((node: HTMLDivElement | null) => {
+    observerRef.current?.disconnect();
+    if (!node) return;
     const obs = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting), {
       rootMargin: "-52px 0px 0px 0px",
       threshold: 0,
     });
-    obs.observe(el);
-    return () => obs.disconnect();
+    obs.observe(node);
+    observerRef.current = obs;
   }, []);
   const matchSeq = evt.projectId === projectId ? evt.seq : -1;
   const { data, error, loading, reload } = useAsync(
