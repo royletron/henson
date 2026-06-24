@@ -1,13 +1,20 @@
-# 🎭 Mysteron
+# 👁 Mysteron
+
+> ***This is the voice of the Mysterons.*** *We know that you can hear us,
+> Earthman. Your projects are known to us. Our agents move among them — unseen,
+> tireless, working while you sleep.*
 
 > Named for the Mysterons — the unseen agents of Gerry Anderson's *Captain Scarlet*.
 
-Mysteron is a framework for managing AI agents — **companions** — across the
+Mysteron is a framework for commanding AI agents — **companions** — across the
 projects on your machine. Each project gets a shared **board**, a shared **docs**
 folder, **memory**, an **etiquette** contract, and a roster of named companions
 (each with a role and a [boring-avatars](https://boringavatars.com) avatar) chosen
 from a **recipe** — work it solo, or as a team (designer / frontend / backend /
 reviewer …).
+
+You name a target, and the companions are dispatched. They work autonomously,
+one task at a time, and report back. You need not watch them — but you can.
 
 You assign a ticket to a companion and press ▶; the companion works it as its own
 persistent Claude session, **one task at a time**. Companions connect over **MCP**

@@ -106,7 +106,7 @@ export function TicketPage({
     }
   }, [lines]);
 
-  if (loading && !data) return <Loading />;
+  if (loading && !data) return <Loading what="Establishing contact…" />;
   if (error || !data)
     return (
       <div>
@@ -266,7 +266,7 @@ export function TicketPage({
             ) : (
               <>
                 {lines.length === 0 && status !== "running" && (
-                  <div class="font-mono text-xs text-zinc-600">Waiting for the agent…</div>
+                  <div class="font-mono text-xs text-zinc-600">Awaiting the voice of the Mysterons…</div>
                 )}
                 {lines.length > 0 && <AgentLog lines={lines} />}
                 {status === "running" && (

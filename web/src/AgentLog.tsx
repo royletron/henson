@@ -142,18 +142,19 @@ export function AgentLog({ lines }: { lines: RunLine[] }) {
   );
 }
 
+// Mysteron-flavoured status lines — ominous, but still hinting at the work.
 const PHRASES = [
-  "reading the rules",
-  "consulting the spec",
-  "thinking it through",
-  "poking around the code",
-  "writing some code",
-  "running the tests",
-  "checking the board",
-  "wrangling types",
-  "reviewing the diff",
-  "tidying up",
-  "reticulating splines",
+  "absorbing your directives",
+  "decoding the specification",
+  "calculating its next move",
+  "infiltrating the codebase",
+  "reconstructing the code",
+  "testing your defences",
+  "surveying the board",
+  "subjugating the type system",
+  "inspecting the alterations",
+  "erasing all trace",
+  "materialising from the void",
 ];
 
 /** A live "the agent is busy" footer: the companion's avatar pulsing beside a
