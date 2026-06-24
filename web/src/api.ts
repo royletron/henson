@@ -35,6 +35,9 @@ export interface ProjectConfig {
   allowedTools?: string[];
   disallowedTools?: string[];
   agent?: { command: string; args?: string[] };
+  pluginOptions?: {
+    "usage-monitor"?: { tokenLimit?: number; windowHours?: number };
+  };
   createdAt: string;
 }
 
@@ -131,6 +134,7 @@ export interface UsageBudget {
   windowHours?: number;
   resetAt?: string;
   limit?: number;
+  limitSource?: "config" | "env" | "default";
   used?: number;
   remaining?: number;
   percentUsed?: number;

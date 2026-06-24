@@ -206,17 +206,19 @@ export function registerApi(
   app.patch("/api/projects/:id/config", async (req: Request, res: Response) => {
     const r = await resolve(req.params.id);
     if (!r) return notFound(res);
-    const { yolo, recipe, allowedTools, disallowedTools, regenerateCompanionId } = (req.body ?? {}) as {
+    const { yolo, recipe, allowedTools, disallowedTools, regenerateCompanionId, pluginOptions } = (req.body ?? {}) as {
       yolo?: boolean;
       recipe?: string;
       allowedTools?: string[];
       disallowedTools?: string[];
       regenerateCompanionId?: string;
+      pluginOptions?: ProjectConfig["pluginOptions"];
     };
     const next = { ...r.config, companions: [...r.config.companions] };
     if (typeof yolo === "boolean") next.yolo = yolo;
     if (Array.isArray(allowedTools)) next.allowedTools = allowedTools.map(String).filter((t) => t.trim());
     if (Array.isArray(disallowedTools)) next.disallowedTools = disallowedTools.map(String).filter((t) => t.trim());
+    if (pluginOptions !== undefined) next.pluginOptions = pluginOptions;
     // Changing the recipe rebuilds the companion roster.
     if (typeof recipe === "string" && recipe !== next.recipe) {
       if (!findRecipe(recipe)) return res.status(400).json({ error: `unknown recipe: ${recipe}` });

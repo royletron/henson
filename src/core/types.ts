@@ -87,6 +87,18 @@ export interface ProjectConfig {
     command: string;
     args?: string[];
   };
+  /**
+   * Per-plugin configuration. Keys are plugin ids (e.g. "usage-monitor").
+   * Takes precedence over env vars; env vars take precedence over code defaults.
+   */
+  pluginOptions?: {
+    "usage-monitor"?: {
+      /** Billable-token ceiling per rolling window. Calibrate to your plan's actual limit. */
+      tokenLimit?: number;
+      /** Rolling window in hours (default 5). */
+      windowHours?: number;
+    };
+  };
   createdAt: string;
 }
 

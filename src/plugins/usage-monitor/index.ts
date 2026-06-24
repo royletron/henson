@@ -1,15 +1,26 @@
 import { z } from "zod";
 import type { Plugin } from "../types.js";
+import type { ProjectConfig } from "../../core/types.js";
 import { usageInWindow } from "./usage.js";
 
-/** Default billable-token ceiling per rolling window. Override with env. */
-function tokenLimit(): number {
+/**
+ * Token limit lookup order: project config → env var → default.
+ * The default (5M) is intentionally generous — calibrate to your actual plan
+ * via pluginOptions["usage-monitor"].tokenLimit in .henson/config.json or by
+ * setting HENSON_USAGE_TOKEN_LIMIT in the environment.
+ */
+function tokenLimit(config?: ProjectConfig): { limit: number; source: "config" | "env" | "default" } {
+  const fromConfig = config?.pluginOptions?.["usage-monitor"]?.tokenLimit;
+  if (fromConfig && fromConfig > 0) return { limit: fromConfig, source: "config" };
   const raw = process.env.HENSON_USAGE_TOKEN_LIMIT;
-  const n = raw ? Number(raw) : NaN;
-  return Number.isFinite(n) && n > 0 ? n : 2_000_000;
+  const fromEnv = raw ? Number(raw) : NaN;
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return { limit: fromEnv, source: "env" };
+  return { limit: 5_000_000, source: "default" };
 }
 
-function windowHours(): number {
+function windowHours(config?: ProjectConfig): number {
+  const fromConfig = config?.pluginOptions?.["usage-monitor"]?.windowHours;
+  if (fromConfig && fromConfig > 0) return fromConfig;
   const raw = process.env.HENSON_USAGE_WINDOW_HOURS;
   const n = raw ? Number(raw) : NaN;
   return Number.isFinite(n) && n > 0 ? n : 5;
@@ -42,8 +53,8 @@ export const usageMonitorPlugin: Plugin = {
         },
         async handler(args) {
           const margin = (args.safetyMarginPercent as number | undefined) ?? 85;
-          const limit = tokenLimit();
-          const wh = windowHours();
+          const { limit, source: limitSource } = tokenLimit(ctx.config);
+          const wh = windowHours(ctx.config);
           const [usage, weeklyUsage] = await Promise.all([
             usageInWindow(wh),
             usageInWindow(168),
@@ -78,6 +89,7 @@ export const usageMonitorPlugin: Plugin = {
             windowStart: usage.windowStart,
             resetAt,
             limit,
+            limitSource,
             used,
             remaining,
             percentUsed: Number(pct.toFixed(1)),

@@ -280,7 +280,8 @@ export function BinTab({ detail, reload }: { detail: ProjectDetail; reload: () =
 // ---- Plugins & usage ----------------------------------------------------
 export function PluginsTab({ detail }: { detail: ProjectDetail }) {
   const projectId = detail.entry.id;
-  const usage = useAsync(() => api<UsageBudget>(`/api/projects/${projectId}/usage`), [projectId]);
+  const [usageNonce, setUsageNonce] = useState(0);
+  const usage = useAsync(() => api<UsageBudget>(`/api/projects/${projectId}/usage`), [projectId, usageNonce]);
   const plugins = useAsync(
     () => api<{ plugins: { id: string; name: string; description: string; active: boolean }[] }>(`/api/plugins?project=${projectId}`),
     [projectId],
@@ -289,6 +290,31 @@ export function PluginsTab({ detail }: { detail: ProjectDetail }) {
   const u = usage.data;
   const pct = u?.percentUsed ?? 0;
   const danger = u?.safetyMarginPercent != null && pct >= u.safetyMarginPercent;
+
+  // Editable token limit
+  const configuredLimit = detail.config.pluginOptions?.["usage-monitor"]?.tokenLimit;
+  const [limitInput, setLimitInput] = useState(configuredLimit != null ? String(configuredLimit) : "");
+  const [limitStatus, setLimitStatus] = useState("");
+
+  const saveLimit = async () => {
+    const n = limitInput.trim() === "" ? undefined : Number(limitInput);
+    if (limitInput.trim() !== "" && (Number.isNaN(n) || (n as number) <= 0)) {
+      setLimitStatus("Enter a positive number or leave blank to use the default.");
+      return;
+    }
+    const opts = { ...(detail.config.pluginOptions ?? {}), "usage-monitor": { ...(detail.config.pluginOptions?.["usage-monitor"] ?? {}), tokenLimit: n } };
+    if (n === undefined) delete opts["usage-monitor"]?.tokenLimit;
+    await api(`/api/projects/${projectId}/config`, { method: "PATCH", body: JSON.stringify({ pluginOptions: opts }) });
+    setLimitStatus("saved ✓");
+    setUsageNonce((x) => x + 1);
+    setTimeout(() => setLimitStatus(""), 2000);
+  };
+
+  const limitSourceLabel: Record<string, string> = {
+    config: "project config",
+    env: "HENSON_USAGE_TOKEN_LIMIT env var",
+    default: "default (uncalibrated)",
+  };
 
   return (
     <div>
@@ -338,6 +364,36 @@ export function PluginsTab({ detail }: { detail: ProjectDetail }) {
               <span>{fmtNum(u.breakdown?.messages)}</span>
             </div>
             <p class="mt-3 text-sm">{u.recommendation}</p>
+
+            <div class="mt-4 border-t border-zinc-800 pt-4">
+              <div class="flex items-center gap-2">
+                <label class="field-label !mt-0 !mb-0">Token limit</label>
+                {u.limitSource && (
+                  <span class={`pill text-xs ${u.limitSource === "default" ? "border-amber-500 text-amber-400" : "border-zinc-600 text-zinc-400"}`}>
+                    {limitSourceLabel[u.limitSource] ?? u.limitSource}
+                  </span>
+                )}
+                <div class="flex-1" />
+                <span class="text-xs text-emerald-400">{limitStatus}</span>
+              </div>
+              <p class="mb-2 text-xs text-zinc-500">
+                Set to match your plan's actual session limit. Pro ≈ 3,000,000 · Max ≈ higher. Leave blank to use the 5M default.
+              </p>
+              <div class="flex gap-2">
+                <input
+                  class="input flex-1"
+                  type="number"
+                  min="1"
+                  step="500000"
+                  placeholder="e.g. 3000000"
+                  value={limitInput}
+                  onInput={(e) => setLimitInput((e.target as HTMLInputElement).value)}
+                />
+                <button class="btn btn-primary btn-sm" onClick={saveLimit}>
+                  Save
+                </button>
+              </div>
+            </div>
           </>
         )}
       </div>
