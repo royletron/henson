@@ -146,7 +146,7 @@
     filter: blur(6px);
     transform: translate(-50%, -50%);
     transform-origin: center;
-    animation: logo-pulse 2s ease-out infinite;
+    animation: logo-pulse 6.5s ease-in-out infinite;
   }
   /* A live agent run: keep the card's normal colour but wrap it in a pulsing red
      glow so it reads as "active right now". */
@@ -185,31 +185,16 @@
   }
 }
 
-/* A menacing heartbeat: a quick lub-dub, then a long ominous rest. */
+/* A slow, subtle, ominous swell — a presence breathing rather than a heartbeat. */
 @keyframes logo-pulse {
-  0% {
-    opacity: 0.25;
-    transform: translate(-50%, -50%) scale(0.8);
-  }
-  10% {
-    opacity: 0.95;
-    transform: translate(-50%, -50%) scale(1.5);
-  }
-  20% {
-    opacity: 0.45;
-    transform: translate(-50%, -50%) scale(1.1);
-  }
-  30% {
-    opacity: 0.85;
-    transform: translate(-50%, -50%) scale(1.38);
-  }
-  44% {
-    opacity: 0.2;
-    transform: translate(-50%, -50%) scale(0.82);
-  }
+  0%,
   100% {
-    opacity: 0.18;
-    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0.12;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+  50% {
+    opacity: 0.38;
+    transform: translate(-50%, -50%) scale(1.12);
   }
 }
 
