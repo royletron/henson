@@ -33,7 +33,7 @@ export interface AutopilotState {
 interface BudgetResult {
   safeToContinue: boolean;
   percentUsed: number;
-  resetAt: string;
+  resetAt?: string;
 }
 
 /**
@@ -100,7 +100,7 @@ export class Autopilot {
         this.set(
           state,
           "paused",
-          `Usage budget reached (${budget.percentUsed}%). Waiting for the window to reset around ${new Date(budget.resetAt).toLocaleTimeString()}.`,
+          `Usage budget reached (${budget.percentUsed}%). Waiting for the window to reset around ${budget.resetAt ? new Date(budget.resetAt).toLocaleTimeString() : "the end of the window"}.`,
           { pausedUntil: budget.resetAt },
         );
         await this.sleep(state, BUDGET_RECHECK_MS());

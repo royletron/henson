@@ -305,7 +305,7 @@ export function PluginsTab({ detail }: { detail: ProjectDetail }) {
               </span>
             </div>
             <p class="text-sm text-zinc-400">
-              Rolling {u.windowHours}h window · resets ~{u.resetAt ? new Date(u.resetAt).toLocaleTimeString() : "—"}
+              Session cap · {u.windowHours}h rolling window · resets ~{u.resetAt ? fmtWhen(u.resetAt) : "—"}
             </p>
             <div class="mt-2 h-2.5 overflow-hidden rounded-full border border-zinc-800 bg-zinc-800">
               <div
@@ -314,12 +314,18 @@ export function PluginsTab({ detail }: { detail: ProjectDetail }) {
               />
             </div>
             <div class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-              <b class="text-zinc-400">Used</b>
+              <b class="text-zinc-400">Session used</b>
               <span>
                 {fmtNum(u.used)} / {fmtNum(u.limit)} tokens ({pct}%)
               </span>
-              <b class="text-zinc-400">Remaining</b>
+              <b class="text-zinc-400">Session remaining</b>
               <span>{fmtNum(u.remaining)}</span>
+              {u.weeklyUsed !== undefined && (
+                <>
+                  <b class="text-zinc-400">Weekly used</b>
+                  <span>{fmtNum(u.weeklyUsed)} tokens (7-day rolling)</span>
+                </>
+              )}
               <b class="text-zinc-400">Input / Output</b>
               <span>
                 {fmtNum(u.breakdown?.input)} / {fmtNum(u.breakdown?.output)}

@@ -43,16 +43,21 @@ export const usageMonitorPlugin: Plugin = {
         async handler(args) {
           const margin = (args.safetyMarginPercent as number | undefined) ?? 85;
           const limit = tokenLimit();
-          const usage = await usageInWindow(windowHours());
+          const wh = windowHours();
+          const [usage, weeklyUsage] = await Promise.all([
+            usageInWindow(wh),
+            usageInWindow(168),
+          ]);
           const used = usage.billableTokens;
           const pct = limit > 0 ? (used / limit) * 100 : 0;
           const remaining = Math.max(0, limit - used);
           const safeToContinue = pct < margin;
 
-          // When the window resets: windowStart + windowHours.
-          const resetAt = new Date(
-            Date.parse(usage.windowStart) + windowHours() * 3600_000,
-          ).toISOString();
+          // Reset = when the oldest message in the window ages out of the rolling window.
+          // If there are no messages, there's nothing to reset.
+          const resetAt = usage.oldestMessageAt
+            ? new Date(Date.parse(usage.oldestMessageAt) + wh * 3600_000).toISOString()
+            : undefined;
 
           let recommendation: string;
           if (safeToContinue) {
@@ -60,15 +65,16 @@ export const usageMonitorPlugin: Plugin = {
               ? "Within budget — proceed to the next ticket."
               : "Within budget — safe to continue.";
           } else {
+            const resetStr = resetAt ? new Date(resetAt).toLocaleTimeString() : "the end of the window";
             recommendation = `Budget nearly exhausted (${pct.toFixed(
               1,
-            )}% of limit). Pause new work until the window resets around ${resetAt}.${
+            )}% of limit). Pause new work until the window resets around ${resetStr}.${
               ctx.config.yolo ? " In yolo mode: sleep until reset, then resume the board." : ""
             }`;
           }
 
           return {
-            windowHours: usage.windowHours,
+            windowHours: wh,
             windowStart: usage.windowStart,
             resetAt,
             limit,
@@ -85,6 +91,7 @@ export const usageMonitorPlugin: Plugin = {
               cacheRead: usage.cacheReadTokens,
               messages: usage.messages,
             },
+            weeklyUsed: weeklyUsage.billableTokens,
             recommendation,
           };
         },

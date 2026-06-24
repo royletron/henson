@@ -23,6 +23,8 @@ export interface UsageWindow extends UsageTotals {
   windowHours: number;
   windowStart: string;
   now: string;
+  /** Earliest message timestamp found inside the window; undefined if no messages. */
+  oldestMessageAt?: string;
 }
 
 function claudeProjectsDir(): string {
@@ -92,6 +94,7 @@ export async function usageInWindow(
 ): Promise<UsageWindow> {
   const cutoff = nowMs - windowHours * 3600_000;
   const totals = empty();
+  let oldestTs: number | undefined;
   const dir = claudeProjectsDir();
 
   for await (const file of walkJsonl(dir)) {
@@ -117,6 +120,7 @@ export async function usageInWindow(
       if (!usage) continue;
       const ts = obj.timestamp ? Date.parse(obj.timestamp) : NaN;
       if (Number.isNaN(ts) || ts < cutoff) continue;
+      if (oldestTs === undefined || ts < oldestTs) oldestTs = ts;
       addLine(totals, usage);
     }
   }
@@ -126,5 +130,6 @@ export async function usageInWindow(
     windowHours,
     windowStart: new Date(cutoff).toISOString(),
     now: new Date(nowMs).toISOString(),
+    oldestMessageAt: oldestTs !== undefined ? new Date(oldestTs).toISOString() : undefined,
   };
 }

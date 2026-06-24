@@ -138,6 +138,7 @@ export interface UsageBudget {
   safeToContinue?: boolean;
   yolo?: boolean;
   breakdown?: { input: number; output: number; cacheCreation: number; cacheRead: number; messages: number };
+  weeklyUsed?: number;
   recommendation?: string;
 }
 
