@@ -2,6 +2,7 @@ import { render } from "preact";
 import Boring from "boring-avatars";
 import { App } from "./App";
 import { COLORS } from "./Avatar";
+import "@fontsource-variable/geist"; // Geist (variable) — used for titles
 import "./styles.css";
 
 // Use the same marble boring-avatar as the favicon, so it matches the header mark.

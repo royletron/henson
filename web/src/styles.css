@@ -2,37 +2,83 @@
 @plugin "@tailwindcss/typography";
 
 /*
- * Palette (colorhunt 450693 / 8C00FF / FF3F7F / FFC400), kept dark. We remap
- * Tailwind's accent scales so the whole app rebrands without touching markup:
- * `violet-*` → 8C00FF (primary), `cyan-*` → FF3F7F (secondary/info),
- * `amber-*` → FFC400 (running/yolo). `emerald`/`red` keep success/error meaning;
- * deep indigo 450693 tints the background.
+ * Mysteron palette. Two signals on a graphite/black base: the eerie green of the
+ * Mysteron detector rings is the pervasive interactive + positive accent, while
+ * Mysteron red is reserved for brand identity, primary CTAs and attention. We
+ * remap Tailwind's scales so the whole app rebrands without touching markup:
+ *   violet-*  → spectral green   (primary: links, focus, active, live)
+ *   emerald-* → spectral green   (success / safe-to-continue)
+ *   cyan-*    → mysteron red     (brand attention / info)
+ *   amber-*   → energy orange    (running / yolo / warning)
+ *   red-*     → alert red        (danger / error)
+ *   zinc-*    → graphite / black / steel neutrals
  */
 @theme {
-  --color-violet-300: #b98cff;
-  --color-violet-400: #a14dff;
-  --color-violet-500: #8c00ff;
-  --color-violet-600: #7a00e6;
-  --color-violet-700: #6200bd;
+  /* Spectral green — the Mysteron glow (primary + success). */
+  --color-violet-300: #7dffc4;
+  --color-violet-400: #2bf0a6;
+  --color-violet-500: #00e676;
+  --color-violet-600: #00c763;
+  --color-violet-700: #00a854;
 
-  --color-cyan-300: #ff7aa6;
-  --color-cyan-400: #ff3f7f;
-  --color-cyan-500: #e62e6c;
+  --color-emerald-300: #7dffc4;
+  --color-emerald-400: #2bf0a6;
+  --color-emerald-500: #00c763;
 
-  --color-amber-300: #ffd454;
-  --color-amber-400: #ffc400;
-  --color-amber-500: #e6b000;
+  /* Mysteron red — brand attention. */
+  --color-cyan-300: #ff6b62;
+  --color-cyan-400: #e10600;
+  --color-cyan-500: #b80500;
+
+  /* Energy orange — running / yolo / warning. */
+  --color-amber-300: #ff9483;
+  --color-amber-400: #ff6b57;
+  --color-amber-500: #e85540;
+
+  /* Alert red — danger / error. */
+  --color-red-300: #ff7a73;
+  --color-red-400: #ff5c52;
+  --color-red-500: #ff3b30;
+  --color-red-600: #e62e24;
+
+  /* Geist for titles (the `font-display` utility); body keeps the default sans. */
+  --font-display: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+
+  /* Graphite / black / steel — flat, neutral (no blue tint). */
+  --color-zinc-100: #f5f5f5;
+  --color-zinc-200: #e5e5e5;
+  --color-zinc-300: #d4d4d4;
+  --color-zinc-400: #bfbfbf; /* steel */
+  --color-zinc-500: #8a8a8a;
+  --color-zinc-600: #525252;
+  --color-zinc-700: #383838;
+  --color-zinc-800: #262626;
+  --color-zinc-900: #1a1a1a; /* graphite */
+  --color-zinc-950: #0a0a0a; /* black */
 }
 
 @layer base {
   body {
     @apply text-zinc-100 antialiased;
-    background-color: #0c0a14;
-    background-image: radial-gradient(1100px 560px at 82% -12%, #2a0a5e 0%, #170a33 28%, #0c0a14 60%);
+    background-color: #0a0a0a;
+    /* A Mysteron red glow bleeds in from the top-right; a faint spectral-green
+       aura answers from the bottom-left. */
+    background-image:
+      radial-gradient(900px 480px at 8% 112%, rgba(0, 230, 118, 0.05) 0%, transparent 55%),
+      radial-gradient(1100px 560px at 84% -14%, rgba(225, 6, 0, 0.22) 0%, rgba(40, 8, 8, 0.6) 30%, #0a0a0a 62%);
+    background-attachment: fixed;
     min-height: 100vh;
   }
   a {
     @apply text-inherit no-underline;
+  }
+  /* Titles in Geist, on the bold end, with tight tracking (Geist reads well tight). */
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.015em;
   }
 }
 
@@ -48,7 +94,7 @@
   }
   .btn-primary {
     @apply border-transparent font-semibold text-white hover:brightness-110;
-    background-image: linear-gradient(90deg, #8c00ff, #ff3f7f);
+    background-image: linear-gradient(90deg, #e10600, #ff6b57);
   }
   .btn-ghost {
     @apply border-transparent bg-transparent;
@@ -144,15 +190,15 @@
 }
 .md-hl .token.code,
 .md-hl .token.code-snippet {
-  color: #ffd454;
+  color: #2bf0a6;
 }
 .md-hl .token.url,
 .md-hl .token.url .token.content,
 .md-hl .token.url-reference {
-  color: #b98cff;
+  color: #7dffc4;
 }
 .md-hl .token.list.punctuation {
-  color: #b98cff;
+  color: #ff6b57;
 }
 .md-hl .token.blockquote.punctuation {
   color: #71717a;
@@ -181,13 +227,13 @@
 :where(.code-hl, .prose code[class*="language-"]) .token.keyword,
 :where(.code-hl, .prose code[class*="language-"]) .token.atrule,
 :where(.code-hl, .prose code[class*="language-"]) .token.important {
-  color: #b98cff;
+  color: #ff6b62;
 }
 :where(.code-hl, .prose code[class*="language-"]) .token.string,
 :where(.code-hl, .prose code[class*="language-"]) .token.char,
 :where(.code-hl, .prose code[class*="language-"]) .token.attr-value,
 :where(.code-hl, .prose code[class*="language-"]) .token.inserted {
-  color: #6ee7b7;
+  color: #7dffc4;
 }
 :where(.code-hl, .prose code[class*="language-"]) .token.number,
 :where(.code-hl, .prose code[class*="language-"]) .token.boolean,
@@ -195,18 +241,18 @@
 :where(.code-hl, .prose code[class*="language-"]) .token.symbol,
 :where(.code-hl, .prose code[class*="language-"]) .token.property,
 :where(.code-hl, .prose code[class*="language-"]) .token.attr-name {
-  color: #ffd454;
+  color: #ff9483;
 }
 :where(.code-hl, .prose code[class*="language-"]) .token.function,
 :where(.code-hl, .prose code[class*="language-"]) .token.class-name,
 :where(.code-hl, .prose code[class*="language-"]) .token.tag {
-  color: #ff7aa6;
+  color: #2bf0a6;
 }
 :where(.code-hl, .prose code[class*="language-"]) .token.operator,
 :where(.code-hl, .prose code[class*="language-"]) .token.url,
 :where(.code-hl, .prose code[class*="language-"]) .token.variable {
-  color: #d4d4d8;
+  color: #bfbfbf;
 }
 :where(.code-hl, .prose code[class*="language-"]) .token.deleted {
-  color: #fca5a5;
+  color: #ff5c52;
 }

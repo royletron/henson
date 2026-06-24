@@ -36,7 +36,7 @@ export function App() {
       <header class="sticky top-0 z-10 flex items-center gap-2 border-b border-zinc-800 bg-zinc-950/80 px-6 py-3 backdrop-blur">
         <a href="#/" class="flex items-center gap-2">
           <Avatar seed="Mysteron" variant="marble" size={26} />
-          <span class="text-xl font-bold tracking-wide">Mysteron</span>
+          <span class="font-display text-xl font-bold tracking-tight">Mysteron</span>
         </a>
         {route.name === "home" ? (
           <span class="text-sm italic text-zinc-500">puppeteering your agents</span>

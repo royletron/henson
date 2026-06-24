@@ -3,9 +3,9 @@ import type { Companion } from "./api";
 
 export type AvatarVariant = "beam" | "marble" | "pixel" | "sunset" | "ring" | "bauhaus";
 
-// Mysteron's palette (colorhunt 450693 / 8C00FF / FF3F7F / FFC400), so avatars sit
-// on-brand against the dark UI.
-export const COLORS = ["#450693", "#8c00ff", "#ff3f7f", "#ffc400"];
+// Mysteron's palette — red, energy orange, spectral green, steel and black — so
+// avatars sit on-brand against the dark UI.
+export const COLORS = ["#e10600", "#ff6b57", "#00e676", "#bfbfbf", "#0a0a0a"];
 
 /**
  * Deterministic boring-avatars avatar (offline SVG). Pass a `companion` (uses its
