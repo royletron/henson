@@ -11,6 +11,7 @@ import {
 import { navigate } from "./hooks";
 import { Avatar } from "./Avatar";
 import { LiveDot } from "./ui";
+import { Loader2 } from "lucide-preact";
 
 export function Board({
   detail,
@@ -100,22 +101,21 @@ function TicketCard({
   running: boolean;
   onEdit: () => void;
 }) {
-  const inProgress = t.state === "in-progress";
   return (
     <div
       draggable
       onDragStart={(e) => e.dataTransfer?.setData("text/plain", t.id)}
       onClick={onEdit}
-      class={`mb-2.5 cursor-grab rounded-sm border p-2.5 ${
-        inProgress
-          ? "pulse border-amber-300 bg-amber-400 text-zinc-900"
-          : "border-zinc-800 bg-zinc-800/70 hover:border-violet-500"
+      class={`mb-2.5 cursor-grab rounded-sm border border-zinc-800 bg-zinc-800/70 p-2.5 ${
+        running ? "card-running" : "hover:border-violet-500"
       }`}
     >
       <div class="flex items-start justify-between gap-2">
         <div class="text-sm font-medium">{t.title}</div>
         <button
-          class={`btn btn-sm shrink-0 px-2 py-0.5 opacity-60 hover:opacity-100 ${inProgress ? "text-zinc-900" : "text-emerald-400"}`}
+          class={`btn btn-sm shrink-0 px-2 py-0.5 ${
+            running ? "text-red-400 opacity-100" : "text-emerald-400 opacity-60 hover:opacity-100"
+          }`}
           disabled={busy}
           title={
             running
@@ -129,7 +129,7 @@ function TicketCard({
             if (!busy) navigate(`#/project/${projectId}/ticket/${t.id}/run`);
           }}
         >
-          {running ? <LiveDot /> : "▶"}
+          {running ? <Loader2 size={14} class="animate-spin" /> : "▶"}
         </button>
       </div>
       <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
