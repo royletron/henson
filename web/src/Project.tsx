@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { api, type ProjectDetail, type Ticket } from "./api";
 import { navigate, useAsync } from "./hooks";
 import { ErrorBox, Loading } from "./ui";
@@ -22,6 +22,23 @@ export function Project({ projectId, tab: urlTab, evt }: { projectId: string; ta
   const tab = urlTab || "board";
   const [savingYolo, setSavingYolo] = useState(false);
   const [editing, setEditing] = useState<Ticket | "new" | null>(null);
+
+  // The tab bar is sticky under the 52px app header. We only want its solid
+  // backdrop once it's actually stuck — otherwise its black bg covers the page
+  // gradient. A zero-height sentinel sits just above the bar; when it scrolls
+  // past the 52px line (rootMargin top), the bar is stuck.
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting), {
+      rootMargin: "-52px 0px 0px 0px",
+      threshold: 0,
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
   const matchSeq = evt.projectId === projectId ? evt.seq : -1;
   const { data, error, loading, reload } = useAsync(
     () => api<ProjectDetail>(`/api/projects/${projectId}`),
@@ -120,7 +137,12 @@ export function Project({ projectId, tab: urlTab, evt }: { projectId: string; ta
         </div>
       )}
 
-      <div class="sticky top-[52px] z-10 -mx-6 mb-4 flex items-center gap-1.5 border-b border-zinc-800 bg-zinc-950/80 px-6 backdrop-blur">
+      <div ref={sentinelRef} aria-hidden class="h-px" />
+      <div
+        class={`sticky top-[52px] z-10 -mx-6 mb-4 flex items-center gap-1.5 px-6 transition-colors ${
+          stuck ? "border-b border-zinc-800 bg-zinc-950/80 backdrop-blur" : ""
+        }`}
+      >
         {TABS.map(([key, label]) => (
           <a
             key={key}

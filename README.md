@@ -20,19 +20,54 @@ blowing your account's rolling-window limits.
 
 ## Quick start
 
+Henson isn't published to npm yet — clone the repo and link it.
+
 ```bash
+# 1. Clone and enter the repo
+git clone <repo-url> henson
+cd henson
+
+# 2. Install dependencies (Node ≥ 20)
 npm install
-npm run build           # builds the server (tsc) and the web UI (Vite) into dist/
-npm link                # optional: puts `henson` on your PATH
 
-# Initialise Henson inside any project folder (pick a team recipe; defaults to solo)
-henson init ~/code/my-app --name "My App" --recipe fullstack
+# 3. Build the server (tsc) and the web UI (Vite) into dist/
+npm run build
 
-# Start the web UI + API (default http://127.0.0.1:4319)
-henson serve
+# 4. Put `henson` on your PATH (symlinks this checkout's bin)
+npm link
 ```
 
-Open the web UI, click into a project, and add tickets / edit the spec.
+Now run the server:
+
+```bash
+# Start the web UI + API — defaults to http://127.0.0.1:4319
+henson serve
+
+# Bind elsewhere with --host / --port (or HENSON_HOST / HENSON_PORT):
+henson serve --port 8080                 # different port, still localhost
+henson serve --host 0.0.0.0 --port 8080  # expose on your network/LAN
+henson serve -v                          # verbose: log requests + agent runs
+```
+
+> `--host 0.0.0.0` makes the UI reachable from other machines — only do this on a
+> network you trust (there's no auth).
+
+Finally, initialise Henson inside a project (run from anywhere):
+
+```bash
+# Pick a team recipe; defaults to `solo`. --name defaults to the folder name.
+henson init ~/code/my-app --name "My App" --recipe fullstack
+
+henson list                              # see registered projects
+```
+
+Open the web UI, click into the project, and add tickets / edit the spec. Already
+have a clone with a committed `.henson/` folder? `henson init` (or `henson
+register`) **adopts** it — see [Shared setup across machines](#shared-setup-across-machines-clones).
+
+> **Rebuilding after a `git pull`:** `npm run build` again (or `npm start`, which
+> builds then serves). For day-to-day UI/server hacking use `npm run dev` — see
+> [Development](#development).
 
 ## How a project is stored
 
