@@ -11,6 +11,7 @@ import {
   type Recipe,
   type RunSummary,
   type Ticket,
+  type UsageBucket,
   type UsageBudget,
 } from "./api";
 import { useAsync } from "./hooks";
@@ -278,6 +279,31 @@ export function BinTab({ detail, reload }: { detail: ProjectDetail; reload: () =
 }
 
 // ---- Plugins & usage ----------------------------------------------------
+/** A single real-limit bucket bar (subscription live mode). */
+function UsageBar({ label, bucket, margin }: { label: string; bucket?: UsageBucket; margin?: number }) {
+  const pct = bucket?.utilizationPct ?? 0;
+  const danger = margin != null && pct >= margin;
+  const rejected = bucket?.status === "rejected";
+  return (
+    <div class="mt-2">
+      <div class="flex items-center justify-between text-sm">
+        <b class="text-zinc-400">{label}</b>
+        <span class={danger || rejected ? "text-red-400" : "text-zinc-300"}>
+          {pct.toFixed(0)}%
+          {bucket?.resetAt ? ` · resets ${fmtWhen(bucket.resetAt)}` : ""}
+          {rejected ? " · limited" : ""}
+        </span>
+      </div>
+      <div class="mt-1 h-2.5 overflow-hidden rounded-full border border-zinc-800 bg-zinc-800">
+        <div
+          class={`h-full ${danger || rejected ? "bg-gradient-to-r from-amber-400 to-red-400" : "bg-gradient-to-r from-emerald-400 to-amber-400"}`}
+          style={{ width: `${Math.min(100, pct)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function PluginsTab({ detail }: { detail: ProjectDetail }) {
   const projectId = detail.entry.id;
   const [usageNonce, setUsageNonce] = useState(0);
@@ -323,77 +349,135 @@ export function PluginsTab({ detail }: { detail: ProjectDetail }) {
         {u && !u.enabled && <div class="text-sm text-zinc-500">Usage monitor plugin is not enabled for this project.</div>}
         {u && u.enabled && (
           <>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
               <h2 class="text-lg font-semibold">Claude usage</h2>
+              {u.account && (
+                <span class="pill text-xs border-zinc-600 text-zinc-400">
+                  {u.account.kind === "subscription"
+                    ? `subscription${u.account.subscriptionType ? ` · ${u.account.subscriptionType}` : ""}`
+                    : u.account.kind === "api-key"
+                      ? "API key"
+                      : "unknown account"}
+                </span>
+              )}
+              <span
+                class={`pill text-xs ${u.source === "live" ? "border-emerald-500 text-emerald-400" : "border-zinc-600 text-zinc-400"}`}
+                title={
+                  u.source === "live"
+                    ? "Real limits read from Claude's rate-limit response headers"
+                    : "Estimated by tallying transcript tokens in the window"
+                }
+              >
+                {u.source === "live" ? "live" : "estimated"}
+              </span>
               <div class="flex-1" />
               <span class={`pill ${u.safeToContinue ? "border-emerald-500 text-emerald-400" : "border-red-500 text-red-400"}`}>
                 {u.safeToContinue ? "safe to continue" : "pause work"}
               </span>
             </div>
-            <p class="text-sm text-zinc-400">
-              Session cap · {u.windowHours}h rolling window · resets ~{u.resetAt ? fmtWhen(u.resetAt) : "—"}
-            </p>
-            <div class="mt-2 h-2.5 overflow-hidden rounded-full border border-zinc-800 bg-zinc-800">
-              <div
-                class={`h-full ${danger ? "bg-gradient-to-r from-amber-400 to-red-400" : "bg-gradient-to-r from-emerald-400 to-amber-400"}`}
-                style={{ width: `${Math.min(100, pct)}%` }}
-              />
-            </div>
-            <div class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-              <b class="text-zinc-400">Session used</b>
-              <span>
-                {fmtNum(u.used)} / {fmtNum(u.limit)} tokens ({pct}%)
-              </span>
-              <b class="text-zinc-400">Session remaining</b>
-              <span>{fmtNum(u.remaining)}</span>
-              {u.weeklyUsed !== undefined && (
-                <>
-                  <b class="text-zinc-400">Weekly used</b>
-                  <span>{fmtNum(u.weeklyUsed)} tokens (7-day rolling)</span>
-                </>
-              )}
-              <b class="text-zinc-400">Input / Output</b>
-              <span>
-                {fmtNum(u.breakdown?.input)} / {fmtNum(u.breakdown?.output)}
-              </span>
-              <b class="text-zinc-400">Cache (create/read)</b>
-              <span>
-                {fmtNum(u.breakdown?.cacheCreation)} / {fmtNum(u.breakdown?.cacheRead)}
-              </span>
-              <b class="text-zinc-400">Messages</b>
-              <span>{fmtNum(u.breakdown?.messages)}</span>
-            </div>
-            <p class="mt-3 text-sm">{u.recommendation}</p>
 
-            <div class="mt-4 border-t border-zinc-800 pt-4">
-              <div class="flex items-center gap-2">
-                <label class="field-label !mt-0 !mb-0">Token limit</label>
-                {u.limitSource && (
-                  <span class={`pill text-xs ${u.limitSource === "default" ? "border-amber-500 text-amber-400" : "border-zinc-600 text-zinc-400"}`}>
-                    {limitSourceLabel[u.limitSource] ?? u.limitSource}
+            {u.source === "live" && u.live ? (
+              <>
+                <p class="mt-1 text-sm text-zinc-400">
+                  Real limits from Claude · captured {fmtWhen(u.live.capturedAt)}
+                </p>
+                <UsageBar label="Session (5h)" bucket={u.live.session} margin={u.safetyMarginPercent} />
+                <UsageBar label="Weekly (7d)" bucket={u.live.weekly} margin={u.safetyMarginPercent} />
+                <div class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+                  <b class="text-zinc-400">Tokens this window</b>
+                  <span>{fmtNum(u.tokensThisWindow)} (transcript tally)</span>
+                  <b class="text-zinc-400">Input / Output</b>
+                  <span>
+                    {fmtNum(u.breakdown?.input)} / {fmtNum(u.breakdown?.output)}
                   </span>
+                  <b class="text-zinc-400">Cache (create/read)</b>
+                  <span>
+                    {fmtNum(u.breakdown?.cacheCreation)} / {fmtNum(u.breakdown?.cacheRead)}
+                  </span>
+                  <b class="text-zinc-400">Messages</b>
+                  <span>{fmtNum(u.breakdown?.messages)}</span>
+                </div>
+                <p class="mt-3 text-sm">{u.recommendation}</p>
+              </>
+            ) : (
+              <>
+                <p class="text-sm text-zinc-400">
+                  {u.mode === "api-budget"
+                    ? `Self-imposed token budget · ${u.windowHours}h window · rolls over ~${u.resetAt ? fmtWhen(u.resetAt) : "—"}`
+                    : `Estimated from transcripts · ${u.windowHours}h rolling window · resets ~${u.resetAt ? fmtWhen(u.resetAt) : "—"}`}
+                </p>
+                {u.account?.kind === "subscription" && (
+                  <p class="mt-1 text-xs text-amber-400">
+                    Waiting for the first live reading — run a ticket so Henson can capture your real limits.
+                  </p>
                 )}
-                <div class="flex-1" />
-                <span class="text-xs text-emerald-400">{limitStatus}</span>
-              </div>
-              <p class="mb-2 text-xs text-zinc-500">
-                Set to match your plan's actual session limit. Pro ≈ 3,000,000 · Max ≈ higher. Leave blank to use the 5M default.
-              </p>
-              <div class="flex gap-2">
-                <input
-                  class="input flex-1"
-                  type="number"
-                  min="1"
-                  step="500000"
-                  placeholder="e.g. 3000000"
-                  value={limitInput}
-                  onInput={(e) => setLimitInput((e.target as HTMLInputElement).value)}
-                />
-                <button class="btn btn-primary btn-sm" onClick={saveLimit}>
-                  Save
-                </button>
-              </div>
-            </div>
+                <div class="mt-2 h-2.5 overflow-hidden rounded-full border border-zinc-800 bg-zinc-800">
+                  <div
+                    class={`h-full ${danger ? "bg-gradient-to-r from-amber-400 to-red-400" : "bg-gradient-to-r from-emerald-400 to-amber-400"}`}
+                    style={{ width: `${Math.min(100, pct)}%` }}
+                  />
+                </div>
+                <div class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+                  <b class="text-zinc-400">{u.mode === "api-budget" ? "Budget used" : "Used (est.)"}</b>
+                  <span>
+                    {fmtNum(u.used)} / {fmtNum(u.limit)} tokens ({pct}%)
+                  </span>
+                  <b class="text-zinc-400">Remaining</b>
+                  <span>{fmtNum(u.remaining)}</span>
+                  {u.weeklyUsed !== undefined && (
+                    <>
+                      <b class="text-zinc-400">Weekly used</b>
+                      <span>{fmtNum(u.weeklyUsed)} tokens (7-day rolling)</span>
+                    </>
+                  )}
+                  <b class="text-zinc-400">Input / Output</b>
+                  <span>
+                    {fmtNum(u.breakdown?.input)} / {fmtNum(u.breakdown?.output)}
+                  </span>
+                  <b class="text-zinc-400">Cache (create/read)</b>
+                  <span>
+                    {fmtNum(u.breakdown?.cacheCreation)} / {fmtNum(u.breakdown?.cacheRead)}
+                  </span>
+                  <b class="text-zinc-400">Messages</b>
+                  <span>{fmtNum(u.breakdown?.messages)}</span>
+                </div>
+                <p class="mt-3 text-sm">{u.recommendation}</p>
+
+                <div class="mt-4 border-t border-zinc-800 pt-4">
+                  <div class="flex items-center gap-2">
+                    <label class="field-label !mt-0 !mb-0">
+                      {u.mode === "api-budget" ? "Token budget" : "Token limit"}
+                    </label>
+                    {u.limitSource && (
+                      <span class={`pill text-xs ${u.limitSource === "default" ? "border-amber-500 text-amber-400" : "border-zinc-600 text-zinc-400"}`}>
+                        {limitSourceLabel[u.limitSource] ?? u.limitSource}
+                      </span>
+                    )}
+                    <div class="flex-1" />
+                    <span class="text-xs text-emerald-400">{limitStatus}</span>
+                  </div>
+                  <p class="mb-2 text-xs text-zinc-500">
+                    {u.mode === "api-budget"
+                      ? "API keys have no native session cap — this is your self-imposed budget per window. Leave blank to use the 5M default."
+                      : "Set to match your plan's actual session limit. Pro ≈ 3,000,000 · Max ≈ higher. Leave blank to use the 5M default."}
+                  </p>
+                  <div class="flex gap-2">
+                    <input
+                      class="input flex-1"
+                      type="number"
+                      min="1"
+                      step="500000"
+                      placeholder="e.g. 3000000"
+                      value={limitInput}
+                      onInput={(e) => setLimitInput((e.target as HTMLInputElement).value)}
+                    />
+                    <button class="btn btn-primary btn-sm" onClick={saveLimit}>
+                      Save
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </>
         )}
       </div>

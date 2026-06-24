@@ -10,6 +10,7 @@ import { RunManager } from "../runner/manager.js";
 import { Autopilot } from "../runner/autopilot.js";
 import { registerApi } from "./api.js";
 import { setupWebSocket } from "./ws.js";
+import { startRateLimitProxy, type RateLimitProxy } from "../plugins/usage-monitor/proxy.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -39,6 +40,25 @@ export async function serve(opts: ServeOptions = {}): Promise<{ port: number; cl
 
   const watcher = new ProjectWatcher();
   await watcher.start();
+
+  // Capture proxy for real Claude usage limits. We route spawned `claude`
+  // traffic through it (see runner/manager.ts) so we can read the
+  // `anthropic-ratelimit-unified-*` response headers — the only source of true
+  // session/weekly utilization. Opt out with HENSON_RATELIMIT_PROXY=0. A failure
+  // here must never stop the server: we just fall back to the JSONL estimate.
+  let rateLimitProxy: RateLimitProxy | undefined;
+  if (process.env.HENSON_RATELIMIT_PROXY !== "0") {
+    try {
+      rateLimitProxy = await startRateLimitProxy();
+      // The child env var the run manager reads (kept separate from
+      // ANTHROPIC_BASE_URL so the proxy's own upstream isn't pointed at itself).
+      process.env.HENSON_RATELIMIT_PROXY_URL = rateLimitProxy.url;
+      if (verbose) console.log(`[henson] rate-limit capture proxy at ${rateLimitProxy.url}`);
+    } catch (err) {
+      console.warn(`[henson] rate-limit proxy failed to start: ${(err as Error).message}`);
+    }
+  }
+
   const runs = new RunManager();
   // Load persisted agent-run history so a ticket's past runs survive restarts.
   const registry = await loadRegistry();
@@ -96,6 +116,7 @@ export async function serve(opts: ServeOptions = {}): Promise<{ port: number; cl
         close: async () => {
           clearInterval(binTimer);
           await watcher.stop();
+          await rateLimitProxy?.close();
           await new Promise<void>((r) => server.close(() => r()));
         },
       });

@@ -466,6 +466,14 @@ export class RunManager {
         HENSON_TICKET_TITLE: args.ticket.title,
         HENSON_TICKET_PROMPT: prompt,
         HENSON_YOLO: args.config.yolo ? "1" : "0",
+        // Route the agent's Anthropic traffic through Henson's capture proxy so
+        // we can read real usage limits off the response headers. The proxy
+        // forwards to the original upstream (which it captured at startup), so
+        // overriding the child's base URL here doesn't create a loop. Harmless
+        // for non-Anthropic custom agents (they ignore it).
+        ...(process.env.HENSON_RATELIMIT_PROXY_URL
+          ? { ANTHROPIC_BASE_URL: process.env.HENSON_RATELIMIT_PROXY_URL }
+          : {}),
       },
       stdio: ["pipe", "pipe", "pipe"],
     });

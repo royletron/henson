@@ -129,8 +129,27 @@ export interface DiscoveredDoc {
   kind: "spec" | "readme" | "doc";
 }
 
+export interface UsageBucket {
+  utilizationPct?: number;
+  status?: string;
+  resetAt?: string;
+}
+
 export interface UsageBudget {
   enabled: boolean;
+  /** Which account regime drives the numbers. */
+  account?: { kind: "subscription" | "api-key" | "unknown"; subscriptionType?: string };
+  /** "live" = real captured limits; "estimate" = transcript token tally. */
+  source?: "live" | "estimate";
+  mode?: "subscription-limits" | "api-budget" | "estimate";
+  /** Real per-bucket utilization, present only in live mode. */
+  live?: {
+    capturedAt: string;
+    ageSeconds: number;
+    overallStatus?: string;
+    session?: UsageBucket;
+    weekly?: UsageBucket;
+  } | null;
   windowHours?: number;
   resetAt?: string;
   limit?: number;
@@ -142,6 +161,8 @@ export interface UsageBudget {
   safeToContinue?: boolean;
   yolo?: boolean;
   breakdown?: { input: number; output: number; cacheCreation: number; cacheRead: number; messages: number };
+  /** Token tally for the session window (supplementary in live mode). */
+  tokensThisWindow?: number;
   weeklyUsed?: number;
   recommendation?: string;
 }
