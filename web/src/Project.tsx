@@ -106,6 +106,29 @@ export function Project({ projectId, tab: urlTab, evt }: { projectId: string; ta
     }
   };
 
+  // Board-only actions, shared between the tab bar (desktop) and the header
+  // action row (mobile). A function so each call returns fresh vnodes.
+  const boardActions = () => (
+    <>
+      <button class="btn btn-primary btn-sm" onClick={() => setEditing("new")}>
+        + Add ticket
+      </button>
+      {apActive ? (
+        <button class="btn btn-danger btn-sm" onClick={() => setAutopilot("stop")}>
+          ■ Stop autopilot
+        </button>
+      ) : (
+        <button
+          class="btn btn-sm"
+          title="Pulls ready tickets one at a time and runs the companion on each, within the usage budget"
+          onClick={() => setAutopilot("start")}
+        >
+          🤖 Start autopilot
+        </button>
+      )}
+    </>
+  );
+
   return (
     <div>
       <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center">
@@ -122,7 +145,8 @@ export function Project({ projectId, tab: urlTab, evt }: { projectId: string; ta
           </div>
         </div>
         <div class="hidden flex-1 md:block" />
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          {tab === "board" && <div class="flex items-center gap-2 md:hidden">{boardActions()}</div>}
           <button
             class={`btn btn-sm ${c.yolo ? "border-amber-400 text-amber-400" : "text-zinc-400"}`}
             onClick={toggleYolo}
@@ -178,24 +202,7 @@ export function Project({ projectId, tab: urlTab, evt }: { projectId: string; ta
           </div>
         </div>
         {tab === "board" && (
-          <div class="flex items-center gap-2 px-4 pb-2 md:px-6 md:pb-0">
-            <button class="btn btn-primary btn-sm" onClick={() => setEditing("new")}>
-              + Add ticket
-            </button>
-            {apActive ? (
-              <button class="btn btn-danger btn-sm" onClick={() => setAutopilot("stop")}>
-                ■ Stop autopilot
-              </button>
-            ) : (
-              <button
-                class="btn btn-sm"
-                title="Pulls ready tickets one at a time and runs the companion on each, within the usage budget"
-                onClick={() => setAutopilot("start")}
-              >
-                🤖 Start autopilot
-              </button>
-            )}
-          </div>
+          <div class="hidden items-center gap-2 px-4 pb-2 md:flex md:px-6 md:pb-0">{boardActions()}</div>
         )}
       </div>
 
