@@ -9,6 +9,7 @@ import { Login } from "./Login";
 import { Loading } from "./ui";
 import { LiveDot } from "./ui";
 import { GuestIndicator } from "./GuestIndicator";
+import { Toaster } from "./Toast";
 import logoUrl from "../images/m.png";
 
 export interface AppEvent {
@@ -173,6 +174,7 @@ function AppShell() {
       </main>
 
       <Footer />
+      <Toaster />
     </div>
   );
 }
