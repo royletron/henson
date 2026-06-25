@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useAsync, useGlobalEvents } from "./hooks";
-import { getWorkers, fmtWhen } from "./api";
+import { getWorkers, fmtWhen, type GuestWorker } from "./api";
 import { LiveDot, CloudGlyph } from "./ui";
+import { pushToast } from "./Toast";
 
 /**
  * Header indicator for connected guest companions. Hidden when none are
@@ -25,6 +26,21 @@ export function GuestIndicator() {
   }, [open]);
 
   const list = workers.data?.workers ?? [];
+
+  // Toast as guests connect/disconnect by diffing against the previous roster.
+  // First load just seeds the baseline so we don't toast every existing guest.
+  const prev = useRef<Map<string, GuestWorker> | null>(null);
+  useEffect(() => {
+    if (!workers.data) return;
+    const curr = new Map(list.map((w) => [w.id, w]));
+    const before = prev.current;
+    if (before) {
+      for (const [id, w] of curr) if (!before.has(id)) pushToast(`🤝 ${w.label} connected`, "success");
+      for (const [id, w] of before) if (!curr.has(id)) pushToast(`👋 ${w.label} disconnected`, "warn");
+    }
+    prev.current = curr;
+  }, [workers.data]);
+
   if (list.length === 0) return null;
 
   const busy = list.filter((w) => w.status === "busy").length;
@@ -43,7 +59,7 @@ export function GuestIndicator() {
       </button>
 
       {open && (
-        <div class="card absolute right-0 top-full z-50 mt-1.5 w-72 p-3 text-sm shadow-lg">
+        <div class="card absolute right-0 top-full z-50 mt-1.5 w-72 bg-zinc-900 p-3 text-sm shadow-lg">
           <div class="mb-2 font-semibold">
             Connected guests ({list.length}
             {busy ? `, ${busy} working` : ""})

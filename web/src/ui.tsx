@@ -10,7 +10,7 @@ export function Modal({ children, onClose }: { children: ComponentChildren; onCl
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div class="card max-h-[90vh] w-full max-w-xl overflow-auto">{children}</div>
+      <div class="card max-h-[90vh] w-full max-w-xl overflow-auto bg-zinc-900">{children}</div>
     </div>
   );
 }
