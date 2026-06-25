@@ -9,6 +9,7 @@ import {
   type TicketState,
 } from "./api";
 import { navigate } from "./hooks";
+import { pushToast } from "./Toast";
 import { Avatar } from "./Avatar";
 import { LiveDot, CloudGlyph } from "./ui";
 import { Loader2, MoreHorizontal, Lock } from "lucide-preact";
@@ -256,21 +257,29 @@ function TicketCard({
         <div class="text-sm font-medium">{t.title}</div>
         <button
           class={`btn btn-sm shrink-0 px-2 py-0.5 ${
-            running ? "text-red-400 opacity-100" : "text-emerald-400 opacity-60 hover:opacity-100"
+            running
+              ? "text-red-400 opacity-100"
+              : busy
+                ? "text-zinc-500 opacity-70 hover:opacity-100"
+                : "text-emerald-400 opacity-60 hover:opacity-100"
           }`}
-          disabled={busy}
           title={
             running
               ? guestLabel
-                ? `Running on guest machine “${guestLabel}”`
-                : "Agent is running on this ticket"
+                ? `Running on guest machine “${guestLabel}” — open the live view`
+                : "Agent is running — open the live view"
               : busy
                 ? `${companion?.name ?? "Companion"} is busy with another ticket`
                 : "Run an agent on this ticket (opens a live view)"
           }
           onClick={(e) => {
             e.stopPropagation();
-            if (!busy) navigate(`#/project/${projectId}/ticket/${t.id}/run`);
+            if (running) return navigate(`#/project/${projectId}/ticket/${t.id}`);
+            if (busy) {
+              pushToast(`${companion?.name ?? "The companion"} is busy with another ticket — it'll pick this one up when free, or connect a guest with \`mysteron join\`.`, "warn");
+              return;
+            }
+            navigate(`#/project/${projectId}/ticket/${t.id}/run`);
           }}
         >
           {running ? <Loader2 size={14} class="animate-spin" /> : "▶"}
