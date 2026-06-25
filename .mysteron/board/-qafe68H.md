@@ -1,12 +1,12 @@
 ---
 title: Make Sure Guests Believe The Ticket
-state: review
+state: done
 priority: medium
 companionId: c1bf55fe-3e93-410d-94a7-cfde4dc1f80e
 assignee: Waldorf the Compiler
 labels: []
 created: '2026-06-25T18:07:04.494Z'
-updated: '2026-06-25T18:10:33.450Z'
+updated: '2026-06-25T18:11:45.005Z'
 order: 0
 ---
 

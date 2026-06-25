@@ -1,12 +1,12 @@
 ---
 title: Guest companion Commits
-state: review
+state: done
 priority: medium
 companionId: c1bf55fe-3e93-410d-94a7-cfde4dc1f80e
 assignee: Waldorf the Compiler
 labels: []
 created: '2026-06-25T17:59:27.634Z'
-updated: '2026-06-25T18:06:00.974Z'
+updated: '2026-06-25T18:11:45.036Z'
 order: 1
 ---
 
