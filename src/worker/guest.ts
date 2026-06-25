@@ -6,9 +6,13 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import WebSocket from "ws";
-import type { DispatchMsg, HostMsg } from "../core/worker-protocol.js";
+import type { DispatchMsg, GuestQuota, HostMsg } from "../core/worker-protocol.js";
+import { captureGuestQuota } from "../runner/budget.js";
 import { renderStreamEvent, runResultStats } from "../runner/manager.js";
 import { GuestTui } from "./guest-tui.js";
+
+/** How often the guest re-captures and re-reports its Claude allowance. */
+const QUOTA_INTERVAL_MS = 60_000;
 
 const pexec = promisify(execFile);
 
@@ -30,6 +34,8 @@ export interface GuestStatus {
   expiresAt?: string;
   message?: string;
   activeRuns: number;
+  /** This guest's current Claude allowance, captured like the host captures its own. */
+  quota?: GuestQuota;
 }
 
 /** A dispatched run starting on this guest. */
@@ -79,6 +85,7 @@ function workerWsUrl(hostUrl: string): string {
 export class GuestConnection {
   private socket?: WebSocket;
   private heartbeat?: ReturnType<typeof setInterval>;
+  private quotaTimer?: ReturnType<typeof setInterval>;
   private endTimer?: ReturnType<typeof setTimeout>;
   private stopped = false;
   private deadline = 0;
@@ -87,6 +94,7 @@ export class GuestConnection {
   private hostLabel?: string;
   private expiresAt?: string;
   private active = 0;
+  private quota?: GuestQuota;
 
   readonly hostUrl: string;
   readonly token: string;
@@ -121,6 +129,7 @@ export class GuestConnection {
       expiresAt: this.expiresAt,
       message: this.message,
       activeRuns: this.active,
+      quota: this.quota,
     };
   }
 
@@ -141,6 +150,7 @@ export class GuestConnection {
     if (this.stopped) return;
     this.stopped = true;
     if (this.heartbeat) clearInterval(this.heartbeat);
+    if (this.quotaTimer) clearInterval(this.quotaTimer);
     if (this.endTimer) clearTimeout(this.endTimer);
     try {
       this.socket?.close();
@@ -185,6 +195,11 @@ export class GuestConnection {
         this.hostLabel = msg.hostLabel;
         this.expiresAt = msg.expiresAt;
         this.set("offered", `Offered to host "${msg.hostLabel}" until ${new Date(msg.expiresAt).toLocaleString()}.`);
+        // Report our Claude allowance now and on a timer, so the host can see if
+        // this guest is also maxed out before handing it work.
+        void this.reportQuota(socket);
+        this.quotaTimer = setInterval(() => void this.reportQuota(socket), QUOTA_INTERVAL_MS);
+        this.quotaTimer.unref?.();
       } else if (msg.t === "rejected") {
         this.set("rejected", msg.reason);
         this.stop(`Rejected: ${msg.reason}`);
@@ -197,6 +212,7 @@ export class GuestConnection {
 
     socket.on("close", () => {
       if (this.heartbeat) clearInterval(this.heartbeat);
+      if (this.quotaTimer) clearInterval(this.quotaTimer);
       if (this.stopped) return;
       if (this.deadline - Date.now() > 0) {
         this.set("connecting", "Disconnected — retrying in 3s…");
@@ -209,6 +225,15 @@ export class GuestConnection {
     socket.on("error", () => {
       /* 'close' fires next and handles retry */
     });
+  }
+
+  /** Capture this machine's Claude allowance and send it to the host (and our own UI). */
+  private async reportQuota(socket: WebSocket): Promise<void> {
+    const quota = await captureGuestQuota();
+    if (!quota) return;
+    this.quota = quota;
+    this.onChange?.(this.status());
+    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ t: "quota", quota }));
   }
 
   private async runDispatch(socket: WebSocket, msg: DispatchMsg): Promise<void> {
@@ -230,6 +255,22 @@ export class GuestConnection {
 
 /** CLI entry: offer this machine and stay up until the window elapses or Ctrl-C. */
 export async function joinHost(opts: GuestOptions): Promise<void> {
+  // Stand up the same capture proxy the host uses, so a standalone CLI guest
+  // reports real subscription limits (not just a transcript estimate). When a
+  // server already set the proxy URL (guest offering from its own web app) we
+  // reuse it. A failure here just falls back to the estimate — never fatal.
+  let stopProxy: (() => Promise<void>) | undefined;
+  if (process.env.MYSTERON_RATELIMIT_PROXY !== "0" && !process.env.MYSTERON_RATELIMIT_PROXY_URL) {
+    try {
+      const { startRateLimitProxy } = await import("../plugins/usage-monitor/proxy.js");
+      const proxy = await startRateLimitProxy();
+      process.env.MYSTERON_RATELIMIT_PROXY_URL = proxy.url;
+      stopProxy = proxy.close;
+    } catch {
+      /* fall back to the transcript-token estimate */
+    }
+  }
+
   const conn = new GuestConnection(opts);
 
   // On an interactive terminal, drive a live dashboard; otherwise (pipes, CI,
@@ -239,9 +280,22 @@ export async function joinHost(opts: GuestOptions): Promise<void> {
     tui = new GuestTui(conn);
     tui.start();
   } else {
+    let lastMessage: string | undefined;
+    let lastQuotaPct: number | undefined;
     conn.onChange = (s) => {
-      if (s.message) console.log(`[guest] ${s.message}`);
-      if (s.state === "offered") console.log("[guest] Waiting for work… (Ctrl-C to withdraw)");
+      if (s.message && s.message !== lastMessage) {
+        console.log(`[guest] ${s.message}`);
+        if (s.state === "offered") console.log("[guest] Waiting for work… (Ctrl-C to withdraw)");
+        lastMessage = s.message;
+      }
+      if (s.quota && s.quota.percentUsed !== lastQuotaPct) {
+        const q = s.quota;
+        console.log(
+          `[guest] quota: ${q.percentUsed.toFixed(0)}% used (${q.source})` +
+            `${q.safeToContinue ? "" : " — maxed out"}`,
+        );
+        lastQuotaPct = q.percentUsed;
+      }
     };
     conn.onRunStart = (r) => console.log(`[guest] ▶ ${r.ticketTitle}`);
     conn.onRunDone = (d) =>
@@ -264,6 +318,7 @@ export async function joinHost(opts: GuestOptions): Promise<void> {
     check.unref?.();
   });
   tui?.stop();
+  await stopProxy?.();
 }
 
 // --- dispatched-ticket execution -------------------------------------------
@@ -313,7 +368,19 @@ function runClaude(
     }
     if (allowed.length) args.push("--allowedTools", ...allowed);
 
-    const child = spawn("claude", args, { cwd: workdir, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("claude", args, {
+      cwd: workdir,
+      stdio: ["ignore", "pipe", "pipe"],
+      // Route the agent's Anthropic traffic through the capture proxy (when one
+      // is running) so the guest reads its real usage limits off the response
+      // headers — exactly as the host does for its own local runs.
+      env: {
+        ...process.env,
+        ...(process.env.MYSTERON_RATELIMIT_PROXY_URL
+          ? { ANTHROPIC_BASE_URL: process.env.MYSTERON_RATELIMIT_PROXY_URL }
+          : {}),
+      },
+    });
     let buffer = "";
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {

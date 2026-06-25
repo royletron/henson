@@ -1,3 +1,4 @@
+import type { GuestQuota } from "../core/worker-protocol.js";
 import type {
   GuestConnection,
   GuestRunDone,
@@ -30,6 +31,8 @@ export interface GuestView {
   now: number;
   runs: RunCard[];
   totals: { done: number; failed: number; stopped: number; costUsd: number; turns: number };
+  /** This guest's current Claude allowance, captured like the host captures its own. */
+  quota?: GuestQuota;
 }
 
 export interface RenderOpts {
@@ -133,6 +136,15 @@ export function renderFrame(v: GuestView, opts: RenderOpts): string {
     `${p.gray("work ")}  ${p.bold(String(active))} active ${p.dim("·")} ` +
       `${p.green(`${t.done}✓`)} ${p.red(`${t.failed}✖`)} ${p.gray(`${t.stopped}■`)}${cost}${turns}`,
   );
+
+  if (v.quota) {
+    const q = v.quota;
+    const pct = Math.round(q.percentUsed);
+    const tint = !q.safeToContinue ? p.red : pct >= 70 ? p.yellow : p.green;
+    const reset = q.resetAt ? ` ${p.dim(`· resets ${new Date(q.resetAt).toLocaleTimeString()}`)}` : "";
+    const flag = q.safeToContinue ? "" : ` ${p.red("· maxed out")}`;
+    out.push(`${p.gray("quota")}  ${tint(`${pct}% used`)} ${p.dim(`(${q.source})`)}${reset}${flag}`);
+  }
 
   if (v.message) out.push(p.dim(clamp(v.message, w)));
   out.push("");
@@ -242,6 +254,7 @@ export class GuestTui {
       now: Date.now(),
       runs: [...this.runs.values()],
       totals: this.totals,
+      quota: s?.quota,
     };
   }
 

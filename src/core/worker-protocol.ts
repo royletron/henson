@@ -23,6 +23,31 @@ export interface HeartbeatMsg {
   t: "heartbeat";
 }
 
+/**
+ * A guest's current Claude allowance, captured with the *same* usage-monitor
+ * machinery the host uses on itself (real subscription limits from the capture
+ * proxy when available, else a transcript-token estimate). Lets the host see
+ * whether a connected guest is also maxed out before handing it work.
+ */
+export interface GuestQuota {
+  /** "live" = real captured subscription limits; "estimate" = transcript token tally. */
+  source: "live" | "estimate";
+  /** Percent of the governing window used (0–100). */
+  percentUsed: number;
+  /** Whether the guest is still safely under its allowance. */
+  safeToContinue: boolean;
+  /** When the governing window resets, if known. */
+  resetAt?: string;
+  /** When the guest captured this reading. */
+  capturedAt: string;
+}
+
+/** A guest reports its current Claude allowance so the host can see if it's maxed out. */
+export interface QuotaMsg {
+  t: "quota";
+  quota: GuestQuota;
+}
+
 /** A line of agent output the guest forwards to the host for the live view. */
 export interface RunLineMsg {
   t: "run-line";
@@ -51,7 +76,7 @@ export interface RunDoneMsg {
   numTurns?: number;
 }
 
-export type GuestMsg = RegisterMsg | HeartbeatMsg | RunLineMsg | RunDoneMsg;
+export type GuestMsg = RegisterMsg | HeartbeatMsg | QuotaMsg | RunLineMsg | RunDoneMsg;
 
 export interface RegisteredMsg {
   t: "registered";

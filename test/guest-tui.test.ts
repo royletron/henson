@@ -80,6 +80,31 @@ test("work line aggregates totals", () => {
   assert.match(out, /42 turns/);
 });
 
+test("quota line shows percent used and source", () => {
+  const out = renderFrame(
+    baseView({ quota: { source: "live", percentUsed: 42, safeToContinue: true, capturedAt: "2026-01-01T00:00:00Z" } }),
+    opts,
+  );
+  assert.match(out, /quota/);
+  assert.match(out, /42% used/);
+  assert.match(out, /live/);
+  assert.doesNotMatch(out, /maxed out/);
+});
+
+test("quota line flags a maxed-out guest", () => {
+  const out = renderFrame(
+    baseView({ quota: { source: "estimate", percentUsed: 96, safeToContinue: false, capturedAt: "2026-01-01T00:00:00Z" } }),
+    opts,
+  );
+  assert.match(out, /96% used/);
+  assert.match(out, /maxed out/);
+});
+
+test("no quota line when the guest hasn't reported one", () => {
+  const out = renderFrame(baseView(), opts);
+  assert.doesNotMatch(out, /quota/);
+});
+
 test("connecting state shows a connecting hint and no offer line", () => {
   const out = renderFrame(baseView({ state: "connecting", hostLabel: undefined, expiresAt: undefined }), opts);
   assert.match(out, /connecting/);
