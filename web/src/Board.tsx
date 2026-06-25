@@ -10,7 +10,7 @@ import {
 } from "./api";
 import { navigate } from "./hooks";
 import { Avatar } from "./Avatar";
-import { LiveDot } from "./ui";
+import { LiveDot, CloudGlyph } from "./ui";
 import { Loader2 } from "lucide-preact";
 
 export function Board({
@@ -26,6 +26,10 @@ export function Board({
   const byId = new Map(detail.config.companions.map((c) => [c.id, c]));
   const busy = new Set(detail.busyCompanions ?? []);
   const running = new Set((detail.activeRuns ?? []).map((r) => r.ticketId));
+  // Tickets whose active run is executing on a guest machine → its label.
+  const guestByTicket = new Map(
+    (detail.activeRuns ?? []).filter((r) => r.guestLabel).map((r) => [r.ticketId, r.guestLabel as string]),
+  );
   const [dragOver, setDragOver] = useState<TicketState | null>(null);
 
   const moveTicket = async (ticketId: string, state: TicketState) => {
@@ -77,6 +81,7 @@ export function Board({
                   companion={t.companionId ? byId.get(t.companionId) : undefined}
                   busy={Boolean(t.companionId && busy.has(t.companionId))}
                   running={running.has(t.id)}
+                  guestLabel={guestByTicket.get(t.id)}
                   onEdit={() => onEdit(t)}
                 />
               ))}
@@ -94,6 +99,7 @@ function TicketCard({
   companion,
   busy,
   running,
+  guestLabel,
   onEdit,
 }: {
   projectId: string;
@@ -101,6 +107,7 @@ function TicketCard({
   companion?: Companion;
   busy: boolean;
   running: boolean;
+  guestLabel?: string;
   onEdit: () => void;
 }) {
   return (
@@ -121,7 +128,9 @@ function TicketCard({
           disabled={busy}
           title={
             running
-              ? "Agent is running on this ticket"
+              ? guestLabel
+                ? `Running on guest machine “${guestLabel}”`
+                : "Agent is running on this ticket"
               : busy
                 ? `${companion?.name ?? "Companion"} is busy with another ticket`
                 : "Run an agent on this ticket (opens a live view)"
@@ -136,6 +145,11 @@ function TicketCard({
       </div>
       <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
         <span class="tag">{t.priority}</span>
+        {guestLabel && (
+          <span class="tag inline-flex items-center gap-1 text-sky-400" title={`Running on guest machine “${guestLabel}”`}>
+            <CloudGlyph size={11} /> {guestLabel}
+          </span>
+        )}
         {companion ? (
           <span class="tag inline-flex items-center gap-1">
             <Avatar companion={companion} size={14} /> {companion.name}

@@ -108,6 +108,8 @@ export interface RunSummary {
   companionId?: string;
   companion: string;
   hostname?: string;
+  /** Set when the run is executing on a guest machine (its label). */
+  guestLabel?: string;
   status: RunStatus;
   command: string;
   startedAt: string;

@@ -11,7 +11,7 @@ import {
   type Ticket,
 } from "./api";
 import { useAsync, useRunStream } from "./hooks";
-import { ErrorBox, LiveDot, Loading, RunTimer } from "./ui";
+import { ErrorBox, LiveDot, Loading, RunTimer, CloudGlyph } from "./ui";
 import { Avatar } from "./Avatar";
 import { AgentLog, AgentThinking } from "./AgentLog";
 import { ChevronDown, ChevronUp } from "lucide-preact";
@@ -169,6 +169,16 @@ export function TicketPage({
       {statusInfo?.label ?? "idle"}
     </span>
   );
+  // Shown when the active/selected run is executing on a guest machine.
+  const guestBadge = () =>
+    timerRun?.guestLabel ? (
+      <span
+        class="pill gap-1.5 border-sky-500 text-sky-400"
+        title={`Running on “${timerRun.guestLabel}” — a guest machine, on its own Claude account`}
+      >
+        <CloudGlyph /> {timerRun.guestLabel}
+      </span>
+    ) : null;
   const runMeta = () => (
     <>
       {timerRun && <RunTimer run={timerRun} class="text-sm text-zinc-400" />}
@@ -264,6 +274,7 @@ export function TicketPage({
       {/* Mobile: compact sticky status bar (the full Info card is hidden). */}
       <div class="sticky top-[52px] z-10 -mx-4 mb-4 flex items-center gap-2 border-b border-zinc-800 bg-zinc-950/80 px-4 py-2 backdrop-blur md:hidden">
         {statusPill()}
+        {guestBadge()}
         {runMeta()}
         <div class="flex-1" />
         {playStop(true)}
@@ -275,8 +286,9 @@ export function TicketPage({
       <div class="grid grid-cols-1 items-start gap-4 md:grid-cols-[minmax(280px,360px)_1fr]">
         <div class="hidden flex-col self-stretch md:flex">
           <div class="card sticky top-20">
-            <div class="mb-3 flex items-center gap-2">
+            <div class="mb-3 flex flex-wrap items-center gap-2">
               {statusPill()}
+              {guestBadge()}
               {runMeta()}
               <div class="flex-1" />
               {playStop()}
@@ -306,6 +318,11 @@ export function TicketPage({
                 {lines.length > 0 && <AgentLog lines={lines} />}
                 {status === "running" && (
                   <div class={lines.length > 0 ? "mt-3" : ""}>
+                    {timerRun?.guestLabel && (
+                      <div class="mb-2 inline-flex items-center gap-1.5 font-mono text-xs text-sky-400">
+                        <CloudGlyph /> Running on guest machine “{timerRun.guestLabel}” — on its own Claude account, streamed here live.
+                      </div>
+                    )}
                     <AgentThinking companion={lead} />
                   </div>
                 )}

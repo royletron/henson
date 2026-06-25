@@ -1,16 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useAsync, useGlobalEvents } from "./hooks";
 import { getWorkers, fmtWhen } from "./api";
-import { LiveDot } from "./ui";
-
-/** Small cloud glyph — signals work offloaded to a remote guest machine. */
-function CloudGlyph() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-1.6A4 4 0 0 0 6 19z" />
-    </svg>
-  );
-}
+import { LiveDot, CloudGlyph } from "./ui";
 
 /**
  * Header indicator for connected guest companions. Hidden when none are

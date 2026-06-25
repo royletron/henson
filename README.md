@@ -310,8 +310,11 @@ public coordinator (owns the board + repo); **guests** dial in from anywhere
    fails its run.
 
 Connected guests appear live in the host's **Settings** and as a count next to
-the header's live dot (click it for per-guest detail); guest runs show on the
-board and in the ticket's live view, attributed to the guest machine.
+the header's live dot (click it for per-guest detail). Guest runs are clearly
+**marked as running on another computer** — a ☁ badge on the board card, in the
+ticket's live view, and in the run list — and the host **terminal** shows an
+animated line while guests are working on its behalf, plus a one-liner as each
+finishes.
 
 Endpoints: host `GET /api/workers`, `POST/DELETE /api/settings/guest` (token);
 guest `GET/POST/DELETE /api/guest` (offer) and `GET /api/guest/board` (host board

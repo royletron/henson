@@ -37,6 +37,8 @@ export interface Run {
   companion: string;
   /** Machine the run executed on (os.hostname()); committed so other machines can attribute it. */
   hostname: string;
+  /** For guest runs: the guest machine's label. Set only when executing on a guest, so the host UI/terminal can show work is offloaded to another computer. */
+  guestLabel?: string;
   status: RunStatus;
   command: string;
   startedAt: string;
@@ -384,6 +386,13 @@ export class RunManager {
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   }
 
+  /** Runs currently executing on a guest machine — for host-side status display. */
+  activeGuestRuns(): { id: string; guestLabel: string; ticketTitle: string }[] {
+    return [...this.runs.values()]
+      .filter((r) => r.status === "running" && r.guestLabel)
+      .map((r) => ({ id: r.id, guestLabel: r.guestLabel as string, ticketTitle: r.ticketTitle }));
+  }
+
   activeForTicket(projectId: string, ticketId: string): Run | undefined {
     return [...this.runs.values()].find(
       (r) => r.projectId === projectId && r.ticketId === ticketId && r.status === "running",
@@ -559,6 +568,7 @@ export class RunManager {
       companionId: companion?.id,
       companion: companion?.name ?? "companion",
       hostname: worker.label, // attribute the run to the guest machine
+      guestLabel: worker.label,
       status: "running",
       command: `guest:${worker.label} ▶ ${args.ticket.title}`,
       startedAt: new Date().toISOString(),

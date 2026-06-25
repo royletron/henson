@@ -13,6 +13,7 @@ import { registerApi } from "./api.js";
 import { setupWebSocket } from "./ws.js";
 import { startRateLimitProxy, type RateLimitProxy } from "../plugins/usage-monitor/proxy.js";
 import { WorkerRegistry } from "./workers.js";
+import { startGuestSpinner } from "./guest-spinner.js";
 import { GuestController } from "./guest-controller.js";
 import { isAuthedByCookieHeader } from "./auth.js";
 
@@ -74,6 +75,8 @@ export async function serve(opts: ServeOptions = {}): Promise<{ port: number; cl
   // Route guest output + results into the run manager.
   workers.onRunLine = (runId, stream, text) => runs.ingestWorkerLine(runId, stream, text);
   workers.onRunDone = (runId, result) => void runs.applyGuestResult(runId, result);
+  // Show an animated line in the host terminal while guests run tickets for us.
+  const stopGuestSpinner = startGuestSpinner(runs, verbose);
 
   const autopilot = new Autopilot(runs, workers);
 
@@ -129,6 +132,7 @@ export async function serve(opts: ServeOptions = {}): Promise<{ port: number; cl
         port,
         close: async () => {
           clearInterval(binTimer);
+          stopGuestSpinner();
           stopWorkerSweep();
           await watcher.stop();
           await rateLimitProxy?.close();

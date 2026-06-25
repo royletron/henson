@@ -24,6 +24,15 @@ export function LiveDot({ class: className = "" }: { class?: string }) {
   return <span class={`live-dot ${className}`} aria-hidden="true" />;
 }
 
+/** Cloud glyph — marks work running on / offloaded to a remote guest machine. */
+export function CloudGlyph({ size = 13 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-1.6A4 4 0 0 0 6 19z" />
+    </svg>
+  );
+}
+
 /** Elapsed-time readout for a run; ticks every second while the run is running. */
 export function RunTimer({
   run,

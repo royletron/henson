@@ -13,7 +13,7 @@ import {
   type TicketState,
 } from "./api";
 import { useAsync } from "./hooks";
-import { LiveDot, RunTimer } from "./ui";
+import { LiveDot, RunTimer, CloudGlyph } from "./ui";
 import type { AppEvent } from "./App";
 
 function agentViewUrl(projectId: string, ticketId: string, run = false): string {
@@ -321,6 +321,11 @@ function AgentHistory({ projectId, ticketId, evt }: { projectId: string; ticketI
                 </span>
                 <span class="flex items-center gap-2 text-zinc-500">
                   <span>{r.companion}</span>
+                  {r.guestLabel && (
+                    <span class="inline-flex items-center gap-1 text-sky-400" title={`Ran on guest machine “${r.guestLabel}”`}>
+                      <CloudGlyph size={11} /> {r.guestLabel}
+                    </span>
+                  )}
                   <span>·</span>
                   <span>{fmtWhen(r.startedAt)}</span>
                   <RunTimer run={r} prefix="· " />
