@@ -330,6 +330,11 @@ function AgentHistory({ projectId, ticketId, evt }: { projectId: string; ticketI
                   <span>{fmtWhen(r.startedAt)}</span>
                   <RunTimer run={r} prefix="· " />
                   {r.costUsd != null && <span title={r.numTurns != null ? `${r.numTurns} turns` : undefined}>· {fmtCost(r.costUsd)}</span>}
+                  {r.branch && (
+                    <span class="inline-flex items-center gap-1 text-violet-300" title={`Work committed to branch ${r.branch} — git merge ${r.branch}`}>
+                      ⎇ {r.branch}
+                    </span>
+                  )}
                   {r.logAvailable === false && <span title={`Ran on ${r.hostname}; logs are local to that machine`}>🖥 {r.hostname}</span>}
                 </span>
               </a>

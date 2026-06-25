@@ -298,23 +298,30 @@ public coordinator (owns the board + repo); **guests** dial in from anywhere
    the **▶ play** button on a ticket **auto-offloads** to an idle guest instead of
    running locally — if no guest is free it blocks with a clear message rather
    than burning a run against the rate limit.
-4. For each dispatched ticket: the host sends the composed prompt and a snapshot
-   of its **working tree** (a `git archive` of tracked files, incl. uncommitted
-   edits — no shared git remote needed). The guest runs Claude locally, streams
-   its output back to the host's live view, then returns a `git diff` of the
-   result.
-5. The host **applies that patch on a fresh per-ticket branch** in an isolated
-   worktree (never touching its own checkout), commits it with the
-   `Mysteron-Companion` trailer, and moves the ticket to **review**. A failed or
-   empty result puts the ticket back to **ready**; a guest that drops mid-run
-   fails its run.
+4. For each dispatched ticket: the host **pins a snapshot** of its working tree
+   (a `git archive` of tracked files, incl. uncommitted edits — no shared git
+   remote needed) and sends it with the composed prompt. The guest runs Claude
+   locally, streams its output back to the host's live view, then returns a
+   `git diff` of the result.
+5. The host **lands that patch the way a local run would** under the project's
+   git strategy: **current-branch** recipes fast-forward the checked-out branch
+   onto the guest's commit (so it lands in your working tree) when that tree is
+   clean; **new-branch** recipes — or a current-branch fallback when the tree is
+   dirty or can't fast-forward — commit it to a dedicated `<prefix><ticket>`
+   branch surfaced in the UI for a `git merge`. The commit is built in a throwaway
+   worktree and applied with `git apply --3way` (against the pinned snapshot), so
+   it merges cleanly even if the host moved on since dispatch. The returned diff
+   is **always saved to `.git/mysteron-patches/`** first, so a failed apply leaves
+   the work recoverable rather than lost. Landed work moves the ticket to
+   **review**; an empty/failed result returns it to **ready**.
 
 Connected guests appear live in the host's **Settings** and as a count next to
 the header's live dot (click it for per-guest detail). Guest runs are clearly
 **marked as running on another computer** — a ☁ badge on the board card, in the
 ticket's live view, and in the run list — and the host **terminal** shows an
 animated line while guests are working on its behalf, plus a one-liner as each
-finishes.
+finishes. When a guest's work lands on a dedicated branch, that branch is shown
+as a ⎇ chip on the run (with the `git merge` command to bring it in).
 
 Endpoints: host `GET /api/workers`, `POST/DELETE /api/settings/guest` (token);
 guest `GET/POST/DELETE /api/guest` (offer) and `GET /api/guest/board` (host board

@@ -110,6 +110,8 @@ export interface RunSummary {
   hostname?: string;
   /** Set when the run is executing on a guest machine (its label). */
   guestLabel?: string;
+  /** For guest runs whose work landed on a dedicated branch (rather than the current one). */
+  branch?: string;
   status: RunStatus;
   command: string;
   startedAt: string;

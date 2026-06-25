@@ -179,6 +179,16 @@ export function TicketPage({
         <CloudGlyph /> {timerRun.guestLabel}
       </span>
     ) : null;
+  // Shown when a guest run's work landed on a dedicated branch (not the current one).
+  const branchBadge = () =>
+    selectedRun?.branch ? (
+      <span
+        class="pill gap-1.5 border-violet-500 text-violet-300"
+        title={`Work committed to branch ${selectedRun.branch} — run \`git merge ${selectedRun.branch}\` to bring it into your branch`}
+      >
+        ⎇ {selectedRun.branch}
+      </span>
+    ) : null;
   const runMeta = () => (
     <>
       {timerRun && <RunTimer run={timerRun} class="text-sm text-zinc-400" />}
@@ -275,6 +285,7 @@ export function TicketPage({
       <div class="sticky top-[52px] z-10 -mx-4 mb-4 flex items-center gap-2 border-b border-zinc-800 bg-zinc-950/80 px-4 py-2 backdrop-blur md:hidden">
         {statusPill()}
         {guestBadge()}
+        {branchBadge()}
         {runMeta()}
         <div class="flex-1" />
         {playStop(true)}
@@ -289,6 +300,7 @@ export function TicketPage({
             <div class="mb-3 flex flex-wrap items-center gap-2">
               {statusPill()}
               {guestBadge()}
+              {branchBadge()}
               {runMeta()}
               <div class="flex-1" />
               {playStop()}

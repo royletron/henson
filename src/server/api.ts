@@ -129,7 +129,9 @@ export function registerApi(
     if (!verifyGuestToken(settings, token)) return res.status(401).json({ error: "invalid guest token" });
     const run = runs.get(req.params.runId);
     if (!run) return notFound(res);
-    const ref = await workingTreeRef(run.projectRoot);
+    // Serve the exact state pinned at dispatch (so the guest diffs against, and we
+    // later 3-way-merge from, the same base); fall back for older runs.
+    const ref = run.baseRef ?? (await workingTreeRef(run.projectRoot));
     res.setHeader("content-type", "application/x-tar");
     // `git archive` of the working-tree ref → a tar of tracked files at their
     // current (incl. uncommitted) content.

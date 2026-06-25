@@ -7,7 +7,8 @@ import { bus, type RunLine } from "../core/events.js";
 import { updateTicket } from "../core/board.js";
 import { readDoc } from "../core/docs.js";
 import { findRecipe, gitInstruction } from "../core/recipes.js";
-import { applyGuestPatch } from "../core/git.js";
+import { loadProjectConfig } from "../core/project.js";
+import { captureSnapshotRef, landGuestPatch, releaseSnapshotRef } from "../core/git.js";
 import { defaultCompanion, getCompanion, readCompanionSpec } from "../core/companions.js";
 import type { WorkerRegistry, GuestRunResult } from "../server/workers.js";
 import { ETIQUETTE_DOC, SPEC_DOC, runsDir } from "../core/paths.js";
@@ -52,8 +53,12 @@ export interface Run {
   logAvailable: boolean;
   /** Set when the agent reported hitting a usage/spend/rate limit (see LIMIT_HIT_RE). */
   limitHit?: boolean;
-  /** For guest runs: the branch the returned patch was committed to (for review). */
+  /** For guest runs: the branch the returned patch was committed to (only when it landed on a dedicated branch, not the current one). */
   branch?: string;
+  /** For guest runs: the working-tree snapshot the guest diffed against (pinned so `git apply --3way` can merge the result). */
+  baseRef?: string;
+  /** For guest runs: where the returned patch was saved on disk (so the work is recoverable even if applying it failed). */
+  patchPath?: string;
   lines: RunLine[];
 }
 
@@ -559,8 +564,14 @@ export class RunManager {
     const companionSpec = companion ? await readCompanionSpec(args.projectRoot, companion.id) : undefined;
     const prompt = buildPrompt(args.config, args.ticket, spec, etiquette, companion, companionSpec ?? undefined);
 
+    const id = nanoid(10);
+    // Pin the working-tree state the guest will diff against, so we serve it as
+    // the snapshot and can 3-way-merge the returned patch back even if the host
+    // moves on. Released once the result lands (see applyGuestResult).
+    const baseRef = await captureSnapshotRef(args.projectRoot, id);
+
     const run: Run = {
-      id: nanoid(10),
+      id,
       projectId: args.projectId,
       projectRoot: args.projectRoot,
       ticketId: args.ticket.id,
@@ -569,6 +580,7 @@ export class RunManager {
       companion: companion?.name ?? "companion",
       hostname: worker.label, // attribute the run to the guest machine
       guestLabel: worker.label,
+      baseRef,
       status: "running",
       command: `guest:${worker.label} ▶ ${args.ticket.title}`,
       startedAt: new Date().toISOString(),
@@ -602,6 +614,7 @@ export class RunManager {
     });
     if (!ok) {
       this.append(run, "system", "✖ guest is no longer available");
+      await releaseSnapshotRef(args.projectRoot, run.id);
       this.finish(run, "failed", null);
     }
     return run;
@@ -624,24 +637,42 @@ export class RunManager {
     let applied = false;
     const patch = result.patchBase64 ? Buffer.from(result.patchBase64, "base64").toString("utf8") : "";
     if (result.status === "done" && patch.trim()) {
-      const branch = `mysteron/${run.ticketId}-${run.id}`;
-      const res = await applyGuestPatch(run.projectRoot, {
+      // Land the work the same way a local run would under this project's recipe:
+      // onto the current branch, or a dedicated one (see landGuestPatch).
+      const config = await loadProjectConfig(run.projectRoot);
+      const git = (config && findRecipe(config.recipe)?.git) ?? { strategy: "current-branch" as const };
+      const res = await landGuestPatch(run.projectRoot, {
         runId: run.id,
-        branch,
+        ticketId: run.ticketId,
         patch,
         message: run.ticketTitle,
         trailer: `Mysteron-Companion: ${run.companion}`,
+        strategy: git.strategy,
+        branchPrefix: git.branchPrefix,
       });
-      if (res.ok) {
+      run.patchPath = res.patchPath;
+      if (res.ok && res.mode === "current-branch") {
+        applied = true;
+        this.append(run, "system", `✓ guest changes committed to the current branch (${res.commit?.slice(0, 8)})`);
+      } else if (res.ok) {
         applied = true;
         run.branch = res.branch;
-        this.append(run, "system", `✓ guest changes committed to branch ${res.branch} (${res.commit?.slice(0, 8)})`);
+        this.append(
+          run,
+          "system",
+          `✓ guest changes committed to branch ${res.branch} (${res.commit?.slice(0, 8)}) — \`git merge ${res.branch}\` to bring them into your branch`,
+        );
       } else {
-        this.append(run, "system", `✖ could not apply the guest's patch: ${res.error}`);
+        this.append(
+          run,
+          "system",
+          `✖ could not apply the guest's patch (${res.error}). The diff is saved at ${res.patchPath} — \`git apply --3way "${res.patchPath}"\` to apply it manually.`,
+        );
       }
     } else if (result.status === "done") {
       this.append(run, "system", "ℹ guest finished but made no file changes.");
     }
+    await releaseSnapshotRef(run.projectRoot, run.id);
 
     // Applied work goes to review; anything else returns to Ready for a retry.
     await updateTicket(run.projectRoot, run.ticketId, { state: applied ? "review" : "ready" }).catch(() => undefined);
