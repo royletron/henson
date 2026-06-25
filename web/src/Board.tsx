@@ -129,6 +129,7 @@ export function Board({
                   projectId={projectId}
                   t={t}
                   companion={t.companionId ? byId.get(t.companionId) : undefined}
+                  creator={t.createdBy ? byId.get(t.createdBy) : undefined}
                   busy={Boolean(t.companionId && busy.has(t.companionId))}
                   running={running.has(t.id)}
                   guestLabel={guestByTicket.get(t.id)}
@@ -216,6 +217,7 @@ function TicketCard({
   projectId,
   t,
   companion,
+  creator,
   busy,
   running,
   guestLabel,
@@ -230,6 +232,7 @@ function TicketCard({
   projectId: string;
   t: Ticket;
   companion?: Companion;
+  creator?: Companion;
   busy: boolean;
   running: boolean;
   guestLabel?: string;
@@ -311,6 +314,11 @@ function TicketCard({
         ) : t.assignee ? (
           <span class="tag">@{t.assignee}</span>
         ) : null}
+        {creator && creator.id !== companion?.id && (
+          <span class="tag inline-flex items-center gap-1 text-zinc-400" title={`Raised by ${creator.name}`}>
+            <Avatar companion={creator} size={14} /> raised
+          </span>
+        )}
         {(t.labels || []).map((l) => (
           <span key={l} class="tag">
             {l}

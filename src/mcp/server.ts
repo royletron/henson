@@ -30,10 +30,12 @@ function text(s: string) {
   return { content: [{ type: "text" as const, text: s }] };
 }
 
-/** Build an MCP server scoped to a single project. */
+/** Build an MCP server scoped to a single project. `callerCompanionId` identifies
+ *  the companion the agent is running as, so tickets it raises are attributed to it. */
 export async function buildMcpServer(
   projectRoot: string,
   config: ProjectConfig,
+  callerCompanionId?: string,
 ): Promise<McpServer> {
   const server = new McpServer({
     name: `mysteron:${config.name}`,
@@ -147,7 +149,8 @@ export async function buildMcpServer(
           .describe("Ids of tickets this one depends on; it waits in the queue until they're done and merged to main."),
       },
     },
-    async (args) => json(await createTicket(projectRoot, args)),
+    // Stamp the raising companion so the board can show who pushed the ticket.
+    async (args) => json(await createTicket(projectRoot, { ...args, createdBy: callerCompanionId })),
   );
 
   server.registerTool(
@@ -263,7 +266,7 @@ export async function startStdioMcp(projectRoot: string): Promise<void> {
       `No Mysteron project at ${projectRoot}. Run "mysteron init" there first.`,
     );
   }
-  const server = await buildMcpServer(projectRoot, config);
+  const server = await buildMcpServer(projectRoot, config, process.env.MYSTERON_COMPANION_ID || undefined);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

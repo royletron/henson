@@ -48,7 +48,7 @@ export function createWorkerMcp(runs: RunManager) {
         res.status(404).json(rpcError("project is not initialised"));
         return;
       }
-      const server = await buildMcpServer(run.projectRoot, config);
+      const server = await buildMcpServer(run.projectRoot, config, run.companionId);
       transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         enableJsonResponse: true,

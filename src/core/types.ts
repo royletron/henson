@@ -25,6 +25,9 @@ export interface Ticket {
   priority: TicketPriority;
   /** Id of the companion this ticket is assigned to (see ProjectConfig.companions). */
   companionId?: string;
+  /** Id of the companion that raised this ticket, if one did; absent for tickets a
+   *  human created from the web UI (those stay anonymous). */
+  createdBy?: string;
   /** Human-readable assignee (the companion's name at assign time); for display. */
   assignee?: string;
   labels: string[];

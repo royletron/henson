@@ -144,6 +144,7 @@ export function TicketPage({
   const c = detail.config;
   const lead = c.companions.find((x) => x.role === "soloist") ?? c.companions[0];
   const assigned = ticket.companionId ? c.companions.find((x) => x.id === ticket.companionId) : undefined;
+  const raisedBy = ticket.createdBy ? c.companions.find((x) => x.id === ticket.createdBy) : undefined;
   const active = runs.find((r) => r.status === "running");
   const selectedRun = runs.find((r) => r.id === selectedRunId);
   const status = liveStatus?.status ?? selectedRun?.status;
@@ -267,6 +268,14 @@ export function TicketPage({
             ticket.assignee || "—"
           )}
         </span>
+        {raisedBy && (
+          <>
+            <b class="text-zinc-400">Raised by</b>
+            <span class="inline-flex items-center gap-1.5">
+              <Avatar companion={raisedBy} size={18} /> {raisedBy.name}
+            </span>
+          </>
+        )}
         <b class="text-zinc-400">Ticket id</b>
         <span class="font-mono">{ticket.id}</span>
       </div>

@@ -47,6 +47,7 @@ function parseTicket(id: string, raw: string): Ticket {
     state: TICKET_STATES.includes(state) ? state : "backlog",
     priority: (data.priority as TicketPriority) ?? "medium",
     companionId: data.companionId as string | undefined,
+    createdBy: data.createdBy as string | undefined,
     assignee: data.assignee as string | undefined,
     labels: Array.isArray(data.labels) ? (data.labels as string[]) : [],
     created: (data.created as string) ?? now(),
@@ -64,6 +65,7 @@ function serializeTicket(t: Ticket): string {
     state: t.state,
     priority: t.priority,
     ...(t.companionId ? { companionId: t.companionId } : {}),
+    ...(t.createdBy ? { createdBy: t.createdBy } : {}),
     ...(t.assignee ? { assignee: t.assignee } : {}),
     labels: t.labels,
     created: t.created,
@@ -127,6 +129,7 @@ export async function createTicket(
     state?: TicketState;
     priority?: TicketPriority;
     companionId?: string;
+    createdBy?: string;
     assignee?: string;
     labels?: string[];
     blockedBy?: string[];
@@ -140,6 +143,7 @@ export async function createTicket(
     state: input.state ?? "backlog",
     priority: input.priority ?? "medium",
     companionId: input.companionId,
+    createdBy: input.createdBy,
     assignee: input.assignee,
     labels: input.labels ?? [],
     created: ts,

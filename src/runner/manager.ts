@@ -84,15 +84,20 @@ type OutputFormat = "text" | "claude-stream-json";
  * docs / memory tools. Prefers the exact CLI the server is running from (no PATH
  * dependency in production); falls back to the linked `mysteron` binary.
  */
-function mysteronMcpLauncher(projectRoot: string): { command: string; args: string[] } {
+function mysteronMcpLauncher(
+  projectRoot: string,
+  companionId?: string,
+): { command: string; args: string[]; env?: Record<string, string> } {
+  // Tell the MCP which companion is calling so tickets it raises are attributed.
+  const env = companionId ? { MYSTERON_COMPANION_ID: companionId } : undefined;
   if (process.env.MYSTERON_MCP_BIN) {
-    return { command: process.env.MYSTERON_MCP_BIN, args: ["mcp", projectRoot] };
+    return { command: process.env.MYSTERON_MCP_BIN, args: ["mcp", projectRoot], env };
   }
   const entry = process.argv[1];
   if (entry && entry.endsWith("cli.js")) {
-    return { command: process.execPath, args: [entry, "mcp", projectRoot] };
+    return { command: process.execPath, args: [entry, "mcp", projectRoot], env };
   }
-  return { command: "mysteron", args: ["mcp", projectRoot] };
+  return { command: "mysteron", args: ["mcp", projectRoot], env };
 }
 
 /** Resolve how to launch the agent. Fully overridable so any agent CLI works. Exported for testing. */
@@ -143,7 +148,7 @@ export function resolveCommand(
   const allowed = (config.allowedTools ?? []).filter((t) => t.trim());
   const disallowed = (config.disallowedTools ?? []).filter((t) => t.trim());
   if (attachMcp) {
-    const launcher = mysteronMcpLauncher(projectRoot);
+    const launcher = mysteronMcpLauncher(projectRoot, companion?.id);
     const mcpConfig = JSON.stringify({ mcpServers: { mysteron: launcher } });
     args.push("--mcp-config", mcpConfig, "--strict-mcp-config");
     // Auto-allow Mysteron's own tools so the companion can use them without yolo.

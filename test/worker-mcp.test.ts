@@ -13,7 +13,7 @@ process.env.MYSTERON_HOME = path.join(tmp, "home");
 process.env.CLAUDE_PROJECTS_DIR = path.join(tmp, "claude");
 
 const { initProject } = await import("../src/core/project.js");
-const { createTicket } = await import("../src/core/board.js");
+const { createTicket, getTicket } = await import("../src/core/board.js");
 const { mintGuestToken } = await import("../src/core/settings.js");
 const { createWorkerMcp } = await import("../src/server/worker-mcp.js");
 const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
@@ -30,8 +30,8 @@ before(async () => {
   await createTicket(root, { title: "Live ticket", priority: "normal" });
   token = (await mintGuestToken()).token;
 
-  // Stub RunManager: every run resolves to our project.
-  const runs = { get: () => ({ projectRoot: root }) } as never;
+  // Stub RunManager: every run resolves to our project, run as a known companion.
+  const runs = { get: () => ({ projectRoot: root, companionId: "comp-123" }) } as never;
   const mcp = createWorkerMcp(runs);
   const app = express();
   app.use(express.json());
@@ -68,6 +68,22 @@ test("serves the host's live board (tickets/docs) to a guest over HTTP", async (
     };
     const out = result.content.map((c) => c.text).join("");
     assert.match(out, /Live ticket/); // the ticket created on the host is visible to the guest
+  } finally {
+    await client.close();
+  }
+});
+
+test("stamps the raising companion on tickets created via the MCP", async () => {
+  const { client, transport } = connect(token);
+  await client.connect(transport);
+  try {
+    const result = (await client.callTool({
+      name: "create_ticket",
+      arguments: { title: "Raised by the agent" },
+    })) as { content: { text: string }[] };
+    const created = JSON.parse(result.content.map((c) => c.text).join("")) as { id: string };
+    const ticket = await getTicket(root, created.id);
+    assert.equal(ticket?.createdBy, "comp-123", "ticket records who pushed it");
   } finally {
     await client.close();
   }

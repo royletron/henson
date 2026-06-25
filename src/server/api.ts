@@ -447,7 +447,9 @@ export function registerApi(
       (r.config.companions.length === 1 ? r.config.companions[0] : undefined);
     const companionId = req.body.companionId ?? fallback?.id;
     const assignee = r.config.companions.find((c) => c.id === companionId)?.name;
-    const ticket = await createTicket(r.entry.path, { ...req.body, companionId, assignee });
+    // Tickets raised from the web UI stay anonymous — only the MCP stamps createdBy.
+    const { createdBy: _ignore, ...body } = req.body;
+    const ticket = await createTicket(r.entry.path, { ...body, companionId, assignee });
     bus.emitEvent({ type: "board-changed", projectId: r.entry.id, detail: ticket.id });
     res.json({ ticket });
   });

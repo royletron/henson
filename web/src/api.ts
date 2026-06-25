@@ -25,6 +25,8 @@ export interface Ticket {
   state: TicketState;
   priority: TicketPriority;
   companionId?: string;
+  /** Companion that raised the ticket (via MCP); absent for human-created tickets. */
+  createdBy?: string;
   assignee?: string;
   labels: string[];
   created: string;
