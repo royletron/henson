@@ -247,11 +247,14 @@ The board has a **🤖 Start autopilot** control. Once started, Mysteron ticks a
 for each **free** companion, dispatches its next `ready` assigned ticket — so
 companions work **in parallel, one task each** (the soloist also picks up
 unassigned tickets). Before dispatching it checks the **usage budget** (the
-usage-monitor plugin); when the budget is reached it **pauses** all companions,
+usage-monitor plugin); when the budget is reached it **pauses** local companions,
 waits for the rolling window to reset, then resumes — so a board can churn for
-hours/days without exceeding your Claude account limits. It goes **idle** when no
-free companion has work and keeps watching, so you can keep adding/assigning
-tickets and it picks them up.
+hours/days without exceeding your Claude account limits. While paused, any
+connected **guest companions** keep working (on their own accounts) and absorb
+ready tickets — including ones assigned to local companions — so the board keeps
+moving instead of fully stalling (see [Guest companions](#guest-companions-lend-a-machine--claude-account)).
+It goes **idle** when no free companion has work and keeps watching, so you can
+keep adding/assigning tickets and it picks them up.
 
 The board shows live status (`running / paused / idle`), how many companions are
 working, completed-this-session, and a recent activity feed. Pair it with **yolo
@@ -290,7 +293,11 @@ public coordinator (owns the board + repo); **guests** dial in from anywhere
 3. When the **autopilot** runs, it hands **unassigned ready** tickets to idle
    guests (one each) — and does so **even when the host's own usage budget is
    spent**, since guests run on their own accounts. Local companions keep doing
-   their assigned work as usual.
+   their assigned work as usual. **When the host's budget is maxed out**, guests
+   also take **companion-assigned** tickets (the host can't run them anyway), and
+   the **▶ play** button on a ticket **auto-offloads** to an idle guest instead of
+   running locally — if no guest is free it blocks with a clear message rather
+   than burning a run against the rate limit.
 4. For each dispatched ticket: the host sends the composed prompt and a snapshot
    of its **working tree** (a `git archive` of tracked files, incl. uncommitted
    edits — no shared git remote needed). The guest runs Claude locally, streams
@@ -302,7 +309,8 @@ public coordinator (owns the board + repo); **guests** dial in from anywhere
    empty result puts the ticket back to **ready**; a guest that drops mid-run
    fails its run.
 
-Connected guests appear live in the host's **Settings**; guest runs show on the
+Connected guests appear live in the host's **Settings** and as a count next to
+the header's live dot (click it for per-guest detail); guest runs show on the
 board and in the ticket's live view, attributed to the guest machine.
 
 Endpoints: host `GET /api/workers`, `POST/DELETE /api/settings/guest` (token);

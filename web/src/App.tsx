@@ -8,6 +8,7 @@ import { Settings } from "./Settings";
 import { Login } from "./Login";
 import { Loading } from "./ui";
 import { LiveDot } from "./ui";
+import { GuestIndicator } from "./GuestIndicator";
 import logoUrl from "../images/m.png";
 
 export interface AppEvent {
@@ -142,6 +143,8 @@ function AppShell() {
             <circle cx="12" cy="12" r="3" />
           </svg>
         </a>
+
+        <GuestIndicator />
 
         <span
           class={`inline-flex items-center text-xs ${connected ? "text-emerald-400" : "text-zinc-600"}`}

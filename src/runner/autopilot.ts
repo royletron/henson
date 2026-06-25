@@ -1,7 +1,7 @@
 import { bus, type AutopilotStatus } from "../core/events.js";
 import { listTickets, nextTicketForCompanion } from "../core/board.js";
 import { loadProjectConfig } from "../core/project.js";
-import { usageMonitorPlugin } from "../plugins/usage-monitor/index.js";
+import { checkUsageBudget } from "./budget.js";
 import type { ProjectConfig } from "../core/types.js";
 import type { RunManager } from "./manager.js";
 import type { WorkerRegistry } from "../server/workers.js";
@@ -29,12 +29,6 @@ export interface AutopilotState {
   completed: number;
   startedAt: string;
   activity: { at: string; text: string }[];
-}
-
-interface BudgetResult {
-  safeToContinue: boolean;
-  percentUsed: number;
-  resetAt?: string;
 }
 
 /**
@@ -98,25 +92,32 @@ export class Autopilot {
         continue;
       }
 
-      // 0) Fan unassigned ready tickets out to connected guests first. Guests run
-      //    on their own machine + Claude account, so they work regardless of the
-      //    host's own usage budget (below).
-      const guestWork = await this.fanOutToGuests(state, config);
+      // 1) Check the host's usage budget up front: when it's maxed the host
+      //    can't run locally, so guests absorb the work instead of it stalling.
+      const budget = await checkUsageBudget(state.projectRoot, config);
+      const hostMaxed = !!(budget && !budget.safeToContinue);
 
-      // 1) Respect the usage budget — pause local companions until it resets.
-      const budget = await this.checkBudget(state.projectRoot, config);
-      if (budget && !budget.safeToContinue) {
+      // 2) Fan ready tickets out to connected guests. Guests run on their own
+      //    machine + Claude account, so they work regardless of the host's
+      //    budget. Normally they take only unassigned tickets; when the host is
+      //    maxed they also pick up companion-assigned ones (see fanOutToGuests).
+      const guestWork = await this.fanOutToGuests(state, config, hostMaxed);
+
+      // 3) If the host is maxed, pause local companions until the window resets
+      //    — the guests handled above keep the board moving in the meantime.
+      if (hostMaxed && budget) {
+        const resetWhen = budget.resetAt ? new Date(budget.resetAt).toLocaleTimeString() : "the end of the window";
         this.set(
           state,
           "paused",
-          `Usage budget reached (${budget.percentUsed}%). Waiting for the window to reset around ${budget.resetAt ? new Date(budget.resetAt).toLocaleTimeString() : "the end of the window"}.`,
+          `Usage budget reached (${budget.percentUsed}%).${guestWork ? " Offloading ready work to guests." : ""} Local companions wait for the window to reset around ${resetWhen}.`,
           { pausedUntil: budget.resetAt },
         );
         await this.sleep(state, BUDGET_RECHECK_MS());
         continue;
       }
 
-      // 2) Per companion: if it's free, dispatch its next ready ticket. Each
+      // 4) Per companion: if it's free, dispatch its next ready ticket. Each
       //    companion does one task at a time; the soloist also takes unassigned ones.
       let anyWork = guestWork;
       for (const companion of config.companions) {
@@ -162,16 +163,19 @@ export class Autopilot {
   }
 
   /**
-   * Hand unassigned ready tickets to idle guest workers (one each). Guests take
+   * Hand ready tickets to idle guest workers (one each). Normally guests take
    * only unassigned tickets, so they never steal a local companion's assigned
-   * work; the local companion loop runs first, so anything it claims is already
-   * "active" and skipped here.
+   * work. When `hostMaxed` is true the host can't run locally anyway, so guests
+   * also absorb companion-assigned tickets to keep the board moving. Either way
+   * a ticket already running (locally or on a guest) is skipped via activeForTicket.
    */
-  private async fanOutToGuests(state: AutopilotState, config: ProjectConfig): Promise<boolean> {
+  private async fanOutToGuests(state: AutopilotState, config: ProjectConfig, hostMaxed: boolean): Promise<boolean> {
     const idleWorkers = this.workers.idle();
     if (idleWorkers.length === 0) return false;
     const ready = await listTickets(state.projectRoot, { state: "ready" });
-    const free = ready.filter((t) => !t.companionId && !this.runs.activeForTicket(state.projectId, t.id));
+    const free = ready.filter(
+      (t) => (hostMaxed || !t.companionId) && !this.runs.activeForTicket(state.projectId, t.id),
+    );
     let dispatched = false;
     for (const worker of idleWorkers) {
       if (this.stopFlags.get(state.projectId)) break;
@@ -198,21 +202,6 @@ export class Autopilot {
       }
     }
     return dispatched;
-  }
-
-  private async checkBudget(
-    projectRoot: string,
-    config: ProjectConfig,
-  ): Promise<BudgetResult | undefined> {
-    if (!config.plugins.includes("usage-monitor")) return undefined;
-    const tools = usageMonitorPlugin.tools?.({ projectRoot, config }) ?? [];
-    const tool = tools.find((t) => t.name === "check_usage_budget");
-    if (!tool) return undefined;
-    try {
-      return (await tool.handler({}, { projectRoot, config })) as BudgetResult;
-    } catch {
-      return undefined;
-    }
   }
 
   /** Sleep in small steps so stop() takes effect promptly. */

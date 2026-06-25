@@ -33,6 +33,7 @@ import { allPlugins, enabledPlugins } from "../plugins/manager.js";
 import { usageMonitorPlugin } from "../plugins/usage-monitor/index.js";
 import type { ProjectWatcher } from "../core/watcher.js";
 import { type RunManager, runSummary, CompanionBusyError } from "../runner/manager.js";
+import { checkUsageBudget } from "../runner/budget.js";
 import type { Autopilot } from "../runner/autopilot.js";
 import type { RunEvent } from "../core/events.js";
 import { registerAuth } from "./auth.js";
@@ -453,13 +454,25 @@ export function registerApi(
     if (!r) return notFound(res);
     const ticket = await getTicket(r.entry.path, req.params.ticketId);
     if (!ticket) return notFound(res);
+    const args = { projectId: r.entry.id, projectRoot: r.entry.path, config: r.config, ticket };
     try {
-      const run = await runs.start({
-        projectId: r.entry.id,
-        projectRoot: r.entry.path,
-        config: r.config,
-        ticket,
-      });
+      // When the host's Claude usage is maxed out, a local run would just fail
+      // against the rate limit — so offload to a connected guest instead. If no
+      // guest is free, block with a clear message rather than burning the attempt.
+      const budget = await checkUsageBudget(r.entry.path, r.config);
+      if (budget && !budget.safeToContinue) {
+        const worker = workers.idle()[0];
+        if (!worker) {
+          const resetWhen = budget.resetAt ? ` (resets around ${new Date(budget.resetAt).toLocaleTimeString()})` : "";
+          return res.status(503).json({
+            error: `Host Claude usage is maxed out (${budget.percentUsed}%)${resetWhen} and no guest worker is available to take this over. Connect a guest with \`mysteron join\`, or wait for the window to reset.`,
+          });
+        }
+        const run = await runs.startOnWorker(args, workers, { id: worker.id, label: worker.label });
+        if (!run) return res.status(503).json({ error: "The guest worker became unavailable. Try again." });
+        return res.json({ run: runSummary(run) });
+      }
+      const run = await runs.start(args);
       res.json({ run: runSummary(run) });
     } catch (err) {
       if (err instanceof CompanionBusyError) return res.status(409).json({ error: err.message });
