@@ -31,11 +31,33 @@ export function Board({
     (detail.activeRuns ?? []).filter((r) => r.guestLabel).map((r) => [r.ticketId, r.guestLabel as string]),
   );
   const [dragOver, setDragOver] = useState<TicketState | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  // Where the dragged card would land: which column, and the id it goes before
+  // (null = append to the end of that column).
+  const [drop, setDrop] = useState<{ state: TicketState; beforeId: string | null } | null>(null);
 
-  const moveTicket = async (ticketId: string, state: TicketState) => {
-    await api(`/api/projects/${projectId}/tickets/${ticketId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ state }),
+  const resetDrag = () => {
+    setDragId(null);
+    setDrop(null);
+    setDragOver(null);
+  };
+
+  // Commit a drag: build the destination column's new id order (dropping the card
+  // at the chosen slot) and send it to the reorder endpoint, which also pulls the
+  // card into that column when it came from another one.
+  const commitDrop = async () => {
+    const target = drop;
+    const id = dragId;
+    resetDrag();
+    if (!id || !target) return;
+    const ids = (detail.board[target.state] || []).map((t) => t.id).filter((x) => x !== id);
+    const at = target.beforeId ? ids.indexOf(target.beforeId) : ids.length;
+    ids.splice(at < 0 ? ids.length : at, 0, id);
+    const before = (detail.board[target.state] || []).map((t) => t.id);
+    if (before.length === ids.length && before.every((x, i) => x === ids[i])) return;
+    await api(`/api/projects/${projectId}/tickets/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ state: target.state, ids }),
     });
     reload();
   };
@@ -61,7 +83,8 @@ export function Board({
       <AutopilotBar detail={detail} />
 
       <div class="mb-3.5 hidden text-sm text-zinc-500 md:block">
-        Drag a card between columns to change its state.
+        Drag a card between columns to change its state, or within a column to reorder it —
+        the top of <b>Ready</b> is what autopilot picks up next.
       </div>
 
       <div class="-mx-4 grid grid-flow-col auto-cols-[minmax(250px,1fr)] gap-3.5 overflow-x-auto px-4 pb-2.5 md:-mx-6 md:px-6">
@@ -75,14 +98,15 @@ export function Board({
               }`}
               onDragOver={(e) => {
                 e.preventDefault();
+                if (!dragId) return;
                 setDragOver(state);
+                // Over the column but not a card → drop at the end.
+                setDrop({ state, beforeId: null });
               }}
               onDragLeave={() => setDragOver((s) => (s === state ? null : s))}
               onDrop={(e) => {
                 e.preventDefault();
-                setDragOver(null);
-                const id = e.dataTransfer?.getData("text/plain");
-                if (id) moveTicket(id, state);
+                commitDrop();
               }}
             >
               <div class="mb-2.5 flex items-center justify-between text-xs uppercase tracking-wide text-zinc-500">
@@ -98,7 +122,7 @@ export function Board({
                   )}
                 </div>
               </div>
-              {tickets.map((t) => (
+              {tickets.map((t, i) => (
                 <TicketCard
                   key={t.id}
                   projectId={projectId}
@@ -108,8 +132,32 @@ export function Board({
                   running={running.has(t.id)}
                   guestLabel={guestByTicket.get(t.id)}
                   onEdit={() => onEdit(t)}
+                  dragging={dragId === t.id}
+                  dropBefore={drop?.state === state && drop.beforeId === t.id}
+                  onDragStart={(e) => {
+                    setDragId(t.id);
+                    e.dataTransfer?.setData("text/plain", t.id);
+                  }}
+                  onDragEnd={resetDrag}
+                  onDragOver={(e) => {
+                    if (!dragId) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    const after = e.clientY > rect.top + rect.height / 2;
+                    setDragOver(state);
+                    setDrop({ state, beforeId: after ? (tickets[i + 1]?.id ?? null) : t.id });
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    commitDrop();
+                  }}
                 />
               ))}
+              {drop?.state === state && drop.beforeId === null && dragId && (
+                <div class="mt-1 h-0.5 rounded-full bg-violet-500" />
+              )}
             </div>
           );
         })}
@@ -171,6 +219,12 @@ function TicketCard({
   running,
   guestLabel,
   onEdit,
+  dragging,
+  dropBefore,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
 }: {
   projectId: string;
   t: Ticket;
@@ -179,15 +233,24 @@ function TicketCard({
   running: boolean;
   guestLabel?: string;
   onEdit: () => void;
+  dragging: boolean;
+  dropBefore: boolean;
+  onDragStart: (e: DragEvent) => void;
+  onDragEnd: (e: DragEvent) => void;
+  onDragOver: (e: DragEvent) => void;
+  onDrop: (e: DragEvent) => void;
 }) {
   return (
     <div
       draggable
-      onDragStart={(e) => e.dataTransfer?.setData("text/plain", t.id)}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
       onClick={onEdit}
       class={`mb-2.5 cursor-grab rounded-sm border border-zinc-800 bg-zinc-800/70 p-2.5 ${
         running ? "card-running" : "hover:border-violet-500"
-      }`}
+      } ${dragging ? "opacity-40" : ""} ${dropBefore ? "border-t-2 border-t-violet-500" : ""}`}
     >
       <div class="flex items-start justify-between gap-2">
         <div class="text-sm font-medium">{t.title}</div>

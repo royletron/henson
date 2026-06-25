@@ -31,6 +31,8 @@ export interface Ticket {
   updated: string;
   body: string;
   attachments?: string[];
+  /** Hand-curated position within a column (lower sorts first); set by drag-reorder. */
+  order?: number;
   /** Ids of tickets this one depends on (must land in main first). */
   blockedBy?: string[];
   /** Resolved dependencies, present on board responses (see listTicketsEnriched). */

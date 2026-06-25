@@ -54,6 +54,7 @@ function parseTicket(id: string, raw: string): Ticket {
     body: content.trim(),
     attachments: Array.isArray(data.attachments) ? (data.attachments as string[]) : undefined,
     blockedBy: Array.isArray(data.blockedBy) ? (data.blockedBy as string[]) : undefined,
+    order: typeof data.order === "number" ? (data.order as number) : undefined,
   };
 }
 
@@ -69,6 +70,7 @@ function serializeTicket(t: Ticket): string {
     updated: t.updated,
     ...(t.attachments?.length ? { attachments: t.attachments } : {}),
     ...(t.blockedBy?.length ? { blockedBy: t.blockedBy } : {}),
+    ...(t.order != null ? { order: t.order } : {}),
   };
   return matter.stringify(`\n${t.body.trim()}\n`, fm);
 }
@@ -93,11 +95,16 @@ export async function listTickets(
   const filtered = filter?.state
     ? tickets.filter((t) => t.state === filter.state)
     : tickets;
-  // Sort by priority then created date for stable ordering.
+  // Hand-curated order wins: a ticket with an explicit `order` sorts by it and
+  // ahead of any un-ordered ticket. Un-ordered tickets keep the default
+  // priority-then-age ordering, so a column nobody has reordered behaves as before.
   const rank: Record<TicketPriority, number> = { high: 0, medium: 1, low: 2 };
-  return filtered.sort(
-    (a, b) => rank[a.priority] - rank[b.priority] || a.created.localeCompare(b.created),
-  );
+  return filtered.sort((a, b) => {
+    if (a.order != null && b.order != null) return a.order - b.order;
+    if (a.order != null) return -1;
+    if (b.order != null) return 1;
+    return rank[a.priority] - rank[b.priority] || a.created.localeCompare(b.created);
+  });
 }
 
 export async function getTicket(
@@ -258,6 +265,29 @@ export async function moveTicketsByState(
     await updateTicket(projectRoot, t.id, { state: to });
   }
   return tickets.length;
+}
+
+/**
+ * Re-sequence a column from a drag-and-drop reorder: assign each listed ticket an
+ * explicit `order` matching its position in `orderedIds`, and pull it into `state`
+ * if it isn't there yet (so a card can be dropped into another column at a chosen
+ * spot in one go). Ids that don't resolve to a ticket are skipped. Returns how many
+ * tickets were actually changed.
+ */
+export async function reorderTickets(
+  projectRoot: string,
+  state: TicketState,
+  orderedIds: string[],
+): Promise<number> {
+  let changed = 0;
+  for (let i = 0; i < orderedIds.length; i++) {
+    const existing = await getTicket(projectRoot, orderedIds[i]);
+    if (!existing) continue;
+    if (existing.order === i && existing.state === state) continue;
+    await updateTicket(projectRoot, orderedIds[i], { order: i, state });
+    changed++;
+  }
+  return changed;
 }
 
 // --- Dependencies --------------------------------------------------------

@@ -14,6 +14,7 @@ import {
   listTickets,
   listTicketsEnriched,
   moveTicketsByState,
+  reorderTickets,
   loadProjectConfig,
   readDoc,
   updateTicket,
@@ -447,6 +448,21 @@ export function registerApi(
     const moved = await moveTicketsByState(r.entry.path, from, to);
     if (moved > 0) bus.emitEvent({ type: "board-changed", projectId: r.entry.id });
     res.json({ moved });
+  });
+
+  // Reorder a column from a drag-and-drop: `ids` is the destination column's full
+  // ordered list. Each ticket is re-sequenced and pulled into `state`, so this also
+  // handles dropping a card into another column at a chosen position.
+  app.post("/api/projects/:id/tickets/reorder", async (req: Request, res: Response) => {
+    const r = await resolve(req.params.id);
+    if (!r) return notFound(res);
+    const { state, ids } = (req.body ?? {}) as { state?: TicketState; ids?: string[] };
+    if (!state || !TICKET_STATES.includes(state) || !Array.isArray(ids)) {
+      return res.status(400).json({ error: "state must be a valid ticket state and ids an array" });
+    }
+    const changed = await reorderTickets(r.entry.path, state, ids);
+    if (changed > 0) bus.emitEvent({ type: "board-changed", projectId: r.entry.id });
+    res.json({ changed });
   });
 
   app.patch("/api/projects/:id/tickets/:ticketId", async (req: Request, res: Response) => {
