@@ -174,6 +174,16 @@ test("buildPrompt embeds the recipe's git behaviour and team", () => {
   assert.ok(!buildPrompt(promptConfig(), promptTicket, "", "").includes("# Attached images"));
 });
 
+test("buildPrompt tells the agent to bail when the ticket is already review-or-greater", () => {
+  const p = buildPrompt(promptConfig(), promptTicket, "spec", "etiquette");
+  // It must check the live state first and stop without touching anything.
+  assert.match(p, /read this ticket's current state/i);
+  assert.match(p, /"review", "done" or "bin"/);
+  assert.match(p, /stop immediately and exit/i);
+  // And explicitly not second-guess via git history (snapshots often lack those commits).
+  assert.match(p, /reconstruct the work from the git history or commit log/i);
+});
+
 test("buildPrompt includes the companion's brief so guest + local runs get the spec", () => {
   const companion = { id: "c1", name: "Bo", role: "soloist", avatarSeed: "Bo" };
   const brief = "# Commits\n\nBe fun, include emoji, use conventional commits";
