@@ -269,6 +269,14 @@ export const login = (password: string) =>
   api<{ ok: boolean }>("/api/auth/login", { method: "POST", body: JSON.stringify({ password }) });
 export const logout = () => api<{ ok: boolean }>("/api/auth/logout", { method: "POST" });
 
+export interface GuestQuota {
+  source: "live" | "estimate";
+  percentUsed: number;
+  safeToContinue: boolean;
+  resetAt?: string;
+  capturedAt: string;
+}
+
 export interface GuestWorker {
   id: string;
   label: string;
@@ -277,6 +285,8 @@ export interface GuestWorker {
   lastSeen: string;
   expiresAt: string;
   status: "idle" | "busy";
+  /** The guest's current Claude allowance, captured like the host captures its own. */
+  quota?: GuestQuota;
 }
 
 export const getWorkers = () => api<{ workers: GuestWorker[] }>("/api/workers");

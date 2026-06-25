@@ -2,7 +2,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { nanoid } from "nanoid";
 import { bus } from "../core/events.js";
 import { loadSettings, verifyGuestToken } from "../core/settings.js";
-import type { DispatchMsg, GuestMsg, HostMsg } from "../core/worker-protocol.js";
+import type { DispatchMsg, GuestMsg, GuestQuota, HostMsg } from "../core/worker-protocol.js";
 
 export interface GuestRunResult {
   status: "done" | "failed" | "stopped";
@@ -23,6 +23,8 @@ export interface Worker {
   lastSeen: string;
   expiresAt: string;
   status: "idle" | "busy";
+  /** The guest's latest Claude allowance, captured the same way the host captures its own. */
+  quota?: GuestQuota;
 }
 
 const MAX_OFFER_MS = 24 * 60 * 60 * 1000; // cap an offer at a day
@@ -150,6 +152,13 @@ export class WorkerRegistry {
         } else if (msg.t === "heartbeat" && id) {
           const w = this.workers.get(id);
           if (w) w.lastSeen = new Date().toISOString();
+        } else if (msg.t === "quota" && id) {
+          const w = this.workers.get(id);
+          if (w) {
+            w.lastSeen = new Date().toISOString();
+            w.quota = msg.quota;
+            bus.emitWorkers();
+          }
         } else if (msg.t === "run-line" && id) {
           const w = this.workers.get(id);
           if (w) w.lastSeen = new Date().toISOString();
