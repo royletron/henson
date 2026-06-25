@@ -23,7 +23,10 @@ watch every project, manage the board, edit docs, and see what each companion is
 doing live. Doc changes are watched so a companion can pull new tickets when the
 spec moves. A **plugin** system ships with a Claude Code **usage monitor** so a
 board can be left churning for hours/days — even in **yolo mode** — without
-blowing your account's rolling-window limits.
+blowing your account's rolling-window limits. A trusted peer can even offer their
+own machine + Claude account as a **guest companion**, fanning the board's work
+out across accounts (see [Guest companions](#guest-companions-lend-a-machine--claude-account)).
+The whole UI can be put behind an optional **password**.
 
 ## Quick start
 
@@ -258,6 +261,55 @@ API: `POST /api/projects/:id/autopilot/start`, `…/stop`, `GET …/autopilot`.
 Tune the loop timing with `MYSTERON_AUTOPILOT_IDLE_MS`, `MYSTERON_AUTOPILOT_BUDGET_MS`,
 `MYSTERON_AUTOPILOT_BREATHER_MS`.
 
+## Guest companions (lend a machine + Claude account)
+
+A **guest** can offer their own machine and Claude account to a host for a while,
+so the board's work **fans out across machines** — each guest runs tickets on
+its own account and quota. Think CI self-hosted runners: the **host** is the
+public coordinator (owns the board + repo); **guests** dial in from anywhere
+(they don't need to be reachable).
+
+> ⚠ **Trust.** A guest runs the host's tickets — i.e. arbitrary agent-driven
+> code — on their own machine, against their own Claude account. Only invite
+> people you trust, and only offer to hosts you trust. Offers are time-boxed and
+> withdrawable, and the guest can keep yolo off / restrict tools. There's no
+> sandbox yet — treat it like pairing on a shared checkout.
+
+**How it works**
+
+1. **Host** mints a guest **join token** in **Settings → Guest companions** and
+   shares the one-line command it shows.
+2. **Guest** offers their machine, either from the CLI or their own web app:
+   ```bash
+   mysteron join https://host:4319 --token <token> --for 2h [--name laptop] [--capacity 1]
+   ```
+   …or in their running Mysteron, **Settings → Offer this machine to a host**
+   (host URL + token + duration). Either way the guest dials the host over a
+   WebSocket, registers a time-boxed offer, and heartbeats until it expires or is
+   withdrawn. The guest can watch the host's board read-only from that page.
+3. When the **autopilot** runs, it hands **unassigned ready** tickets to idle
+   guests (one each) — and does so **even when the host's own usage budget is
+   spent**, since guests run on their own accounts. Local companions keep doing
+   their assigned work as usual.
+4. For each dispatched ticket: the host sends the composed prompt and a snapshot
+   of its **working tree** (a `git archive` of tracked files, incl. uncommitted
+   edits — no shared git remote needed). The guest runs Claude locally, streams
+   its output back to the host's live view, then returns a `git diff` of the
+   result.
+5. The host **applies that patch on a fresh per-ticket branch** in an isolated
+   worktree (never touching its own checkout), commits it with the
+   `Mysteron-Companion` trailer, and moves the ticket to **review**. A failed or
+   empty result puts the ticket back to **ready**; a guest that drops mid-run
+   fails its run.
+
+Connected guests appear live in the host's **Settings**; guest runs show on the
+board and in the ticket's live view, attributed to the guest machine.
+
+Endpoints: host `GET /api/workers`, `POST/DELETE /api/settings/guest` (token);
+guest `GET/POST/DELETE /api/guest` (offer) and `GET /api/guest/board` (host board
+proxy). The guest connection rides `/worker`; the working-tree snapshot is served
+at `/api/worker/snapshot/:runId` (guest-token gated).
+
 ## Commits
 
 Companions are told to stamp their commits with a trailer:
@@ -305,9 +357,10 @@ Configure via env:
 | -------- | ------- | ------- |
 | `MYSTERON_HOME` | `~/.mysteron` | Registry / global state location |
 | `MYSTERON_PORT` / `MYSTERON_HOST` | `4319` / `127.0.0.1` | Web server bind |
-| `MYSTERON_USAGE_TOKEN_LIMIT` | `2000000` | Billable-token ceiling per window |
+| `MYSTERON_USAGE_TOKEN_LIMIT` | `5000000` | Billable-token budget per window (estimate/API-key mode) |
 | `MYSTERON_USAGE_WINDOW_HOURS` | `5` | Rolling window length |
 | `CLAUDE_PROJECTS_DIR` | `~/.claude/projects` | Where transcripts are read from |
+| `MYSTERON_RATELIMIT_PROXY` | `1` | Set `0` to disable the usage capture proxy |
 
 ## CLI
 
@@ -321,6 +374,8 @@ mysteron serve [--port <n>] [--host <h>] [-v]    Start the web UI + API (-v/--ve
 mysteron mcp [id|path]                           Run the MCP server (stdio)
 mysteron ticket list <id|path>                   List tickets
 mysteron ticket add <id|path> <title...>         Add a ticket
+mysteron join <host-url> --token <t> [--for 2h] [--name <label>] [--capacity 1]
+                                               Offer this machine as a guest worker to a host
 ```
 
 ## Development
@@ -351,8 +406,9 @@ so a rebuild is always picked up without a hard refresh.
 src/
   core/      registry, project, board, docs, memory, companions, recipes, git, watcher, events
   mcp/       per-project MCP server (stdio)
-  server/    Express REST API + WebSocket hub; serves the built web UI
+  server/    Express REST API + WebSocket hub (+ /worker hub, guest registry); serves the built web UI
   runner/    agent run manager (per-companion lock, sessions, run persistence) + board autopilot
+  worker/    guest-worker client (offer this machine to a host, run dispatched tickets)
   plugins/   plugin interface + manager + usage-monitor
   cli.ts     the `mysteron` command
 web/         Preact + Vite + Tailwind web UI (builds to dist/server/public)
@@ -370,6 +426,9 @@ drive everything from the web UI and connect companions from anywhere.
 - ~~Persistent per-companion Claude sessions~~ ✅
 - ~~Committed run metadata + hostname; gitignored local logs~~ ✅
 - ~~Commit attribution (`Mysteron-Companion` trailer) + commits view~~ ✅
+- ~~Optional password protection~~ ✅
+- ~~Guest companions: lend a machine + Claude account; fan work out via working-tree patches~~ ✅
+- Guest companions: sandbox guest runs (container/VM) so untrusted offers are safe
 - Recipe teams: delegate to real sub-agents (currently the lead companion owns the work)
 - Condense/fork a companion's session when its context grows large
 - Auto-derive draft tickets from spec diffs on `docs-changed`
