@@ -1,0 +1,13 @@
+{
+  "id": "f5fKp5I3qg",
+  "ticketId": "zM0yyIXe",
+  "ticketTitle": "Marketing Site Text Issue",
+  "companionId": "c1bf55fe-3e93-410d-94a7-cfde4dc1f80e",
+  "companion": "Waldorf the Compiler",
+  "hostname": "toby-the-puter",
+  "status": "stopped",
+  "command": "claude -p <ticket> --output-format stream-json --permission-mode bypassPermissions --resume c1bf55fe-3e93-410d-94a7-cfde4dc1f80e --mcp-config <henson> --strict-mcp-config --allowedTools mcp__henson",
+  "startedAt": "2026-06-24T08:40:59.668Z",
+  "exitCode": null,
+  "endedAt": "2026-06-24T08:41:17.265Z"
+}

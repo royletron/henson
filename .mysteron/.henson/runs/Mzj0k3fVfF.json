@@ -1,0 +1,15 @@
+{
+  "id": "Mzj0k3fVfF",
+  "ticketId": "EhAvbT74",
+  "ticketTitle": "Everything is a Page",
+  "companionId": "c1bf55fe-3e93-410d-94a7-cfde4dc1f80e",
+  "companion": "Waldorf the Compiler",
+  "hostname": "toby-the-puter",
+  "status": "done",
+  "command": "claude -p <ticket> --output-format stream-json --permission-mode bypassPermissions --resume c1bf55fe-3e93-410d-94a7-cfde4dc1f80e --mcp-config <henson> --strict-mcp-config --allowedTools mcp__henson",
+  "startedAt": "2026-06-24T00:43:43.095Z",
+  "costUsd": 1.1449877999999996,
+  "numTurns": 24,
+  "exitCode": 0,
+  "endedAt": "2026-06-24T00:47:08.501Z"
+}

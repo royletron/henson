@@ -1,0 +1,15 @@
+{
+  "id": "lvqbtPFVIT",
+  "ticketId": "pCnJWL5Y",
+  "ticketTitle": "Reset Time",
+  "companionId": "c1bf55fe-3e93-410d-94a7-cfde4dc1f80e",
+  "companion": "Waldorf the Compiler",
+  "hostname": "toby-the-puter",
+  "status": "done",
+  "command": "claude -p <ticket> --output-format stream-json --permission-mode bypassPermissions --session-id c1bf55fe-3e93-410d-94a7-cfde4dc1f80e --mcp-config <henson> --strict-mcp-config --allowedTools mcp__henson",
+  "startedAt": "2026-06-24T00:35:55.402Z",
+  "costUsd": 1.1272863,
+  "numTurns": 46,
+  "exitCode": 0,
+  "endedAt": "2026-06-24T00:43:28.829Z"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "v7f7rxE-25",
+  "ticketId": "8_BC3Szf",
+  "ticketTitle": "Usage Is Still Borked",
+  "companionId": "c1bf55fe-3e93-410d-94a7-cfde4dc1f80e",
+  "companion": "Waldorf the Compiler",
+  "hostname": "toby-the-puter",
+  "status": "done",
+  "command": "claude -p <ticket> --output-format stream-json --permission-mode bypassPermissions --resume c1bf55fe-3e93-410d-94a7-cfde4dc1f80e --mcp-config <henson> --strict-mcp-config --allowedTools mcp__henson",
+  "startedAt": "2026-06-24T00:50:02.745Z",
+  "costUsd": 2.2242228,
+  "numTurns": 34,
+  "exitCode": 0,
+  "endedAt": "2026-06-24T00:59:21.010Z"
+}

@@ -20,6 +20,7 @@ export default defineConfig({
   plugins: [preact(), tailwindcss()],
   server: {
     port: 5319,
+    host: "0.0.0.0",
     // In dev, proxy API + the live WebSocket to the running Express server.
     proxy: {
       "/api": {
