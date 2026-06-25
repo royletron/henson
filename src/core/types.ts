@@ -32,6 +32,12 @@ export interface Ticket {
   updated: string;
   /** Markdown description / acceptance criteria. */
   body: string;
+  /**
+   * Hand-curated position within a column (lower sorts first). Set by dragging a
+   * card to reorder; absent for tickets that have never been reordered, which keep
+   * the default priority-then-age ordering.
+   */
+  order?: number;
   /** Filenames of image attachments, stored under board/attachments/<id>. */
   attachments?: string[];
   /**

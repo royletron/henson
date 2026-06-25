@@ -10,7 +10,7 @@ process.env.MYSTERON_HOME = path.join(tmp, "home");
 process.env.CLAUDE_PROJECTS_DIR = path.join(tmp, "claude");
 
 const { initProject, loadProjectConfig } = await import("../src/core/project.js");
-const { createTicket, listTickets, nextTicket, nextTicketForCompanion, updateTicket, getTicket, deleteTicket, addAttachment, removeAttachment, readAttachment, binStaleDone, moveTicketsByState, listTicketsEnriched, blockedTicketIds } = await import("../src/core/board.js");
+const { createTicket, listTickets, nextTicket, nextTicketForCompanion, updateTicket, getTicket, deleteTicket, addAttachment, removeAttachment, readAttachment, binStaleDone, moveTicketsByState, reorderTickets, listTicketsEnriched, blockedTicketIds } = await import("../src/core/board.js");
 const { readDoc, writeDoc } = await import("../src/core/docs.js");
 const { loadRegistry } = await import("../src/core/registry.js");
 const { usageInWindow } = await import("../src/plugins/usage-monitor/usage.js");
@@ -122,6 +122,34 @@ test("tickets: create, list (priority sorted), update, next", async () => {
   const moved = await updateTicket(projectRoot, hi.id, { state: "done" });
   assert.equal(moved?.state, "done");
   assert.equal((await listTickets(projectRoot, { state: "done" })).length, 1);
+});
+
+test("reorder: hand-curated order overrides priority and drives what's next", async () => {
+  const root = path.join(tmp, "reorder");
+  await fs.mkdir(root, { recursive: true });
+  const a = await createTicket(root, { title: "a", priority: "high", state: "ready" });
+  const b = await createTicket(root, { title: "b", priority: "low", state: "ready" });
+  const c = await createTicket(root, { title: "c", priority: "medium", state: "ready" });
+
+  // Default: priority sorted, so the high one is next.
+  assert.deepEqual((await listTickets(root, { state: "ready" })).map((t) => t.id), [a.id, c.id, b.id]);
+  assert.equal((await nextTicket(root))?.id, a.id);
+
+  // Drag to put the low-priority ticket on top — order now wins over priority.
+  await reorderTickets(root, "ready", [b.id, c.id, a.id]);
+  assert.deepEqual((await listTickets(root, { state: "ready" })).map((t) => t.id), [b.id, c.id, a.id]);
+  assert.equal((await nextTicket(root))?.id, b.id, "autopilot pops the hand-picked top card");
+
+  // The order persists through frontmatter.
+  assert.equal((await getTicket(root, b.id))?.order, 0);
+
+  // Reorder can also pull a card in from another column at a chosen slot.
+  const d = await createTicket(root, { title: "d", state: "backlog" });
+  await reorderTickets(root, "ready", [b.id, d.id, c.id, a.id]);
+  const ready = await listTickets(root, { state: "ready" });
+  assert.deepEqual(ready.map((t) => t.id), [b.id, d.id, c.id, a.id]);
+  assert.equal((await getTicket(root, d.id))?.state, "ready");
+  assert.equal((await listTickets(root, { state: "backlog" })).length, 0);
 });
 
 test("dependencies: pause the queue until upstream lands, expose both directions", async () => {
