@@ -54,6 +54,11 @@ class MysteronBus extends EventEmitter {
   emitWorkers(): void {
     this.emit("workers", { type: "workers-changed", at: new Date().toISOString() });
   }
+
+  /** This machine's outbound guest offer changed state. */
+  emitGuest(): void {
+    this.emit("guest", { type: "guest-changed", at: new Date().toISOString() });
+  }
 }
 
 export const bus = new MysteronBus();

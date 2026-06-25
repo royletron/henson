@@ -165,7 +165,7 @@ async function main(): Promise<void> {
       if (!positionals[0]) throw new Error("join requires a host URL, e.g. mysteron join https://host --token <t>");
       await joinHost({
         hostUrl: positionals[0],
-        token: typeof flags.token === "string" ? flags.token : undefined,
+        token: typeof flags.token === "string" ? flags.token : "",
         label: typeof flags.name === "string" ? flags.name : undefined,
         forMs: typeof flags.for === "string" ? parseDuration(flags.for) : undefined,
         capacity: typeof flags.capacity === "string" ? Number(flags.capacity) : undefined,

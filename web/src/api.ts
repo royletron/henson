@@ -241,6 +241,30 @@ export const getGuestToken = () => api<{ token: string | null }>("/api/settings/
 export const mintGuestToken = () => api<{ token: string }>("/api/settings/guest", { method: "POST" });
 export const revokeGuestToken = () => api<{ ok: boolean }>("/api/settings/guest", { method: "DELETE" });
 
+// This machine offering itself to a host as a guest.
+export interface GuestOfferStatus {
+  offering: boolean;
+  state: "connecting" | "offered" | "rejected" | "stopped";
+  hostUrl: string;
+  label: string;
+  projectName?: string;
+  expiresAt?: string;
+  message?: string;
+  activeRuns: number;
+}
+
+export interface HostBoardProject {
+  id: string;
+  name: string;
+  tickets: { id: string; title: string; state: TicketState; priority: string; assignee?: string }[];
+}
+
+export const getGuestOffer = () => api<{ guest: GuestOfferStatus | null }>("/api/guest");
+export const startGuestOffer = (body: { hostUrl: string; token: string; forMs?: number; name?: string }) =>
+  api<{ guest: GuestOfferStatus }>("/api/guest", { method: "POST", body: JSON.stringify(body) });
+export const stopGuestOffer = () => api<{ ok: boolean }>("/api/guest", { method: "DELETE" });
+export const getHostBoard = () => api<{ projects: HostBoardProject[] }>("/api/guest/board");
+
 // ---- shared display constants -------------------------------------------
 export const STATE_LABELS: Record<TicketState, string> = {
   backlog: "Backlog",

@@ -12,6 +12,7 @@ import { registerApi } from "./api.js";
 import { setupWebSocket } from "./ws.js";
 import { startRateLimitProxy, type RateLimitProxy } from "../plugins/usage-monitor/proxy.js";
 import { WorkerRegistry } from "./workers.js";
+import { GuestController } from "./guest-controller.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -74,6 +75,9 @@ export async function serve(opts: ServeOptions = {}): Promise<{ port: number; cl
 
   const autopilot = new Autopilot(runs, workers);
 
+  // This machine's outbound offer (when it acts as a guest to another host).
+  const guest = new GuestController();
+
   // Sweep tickets that have sat in "done" for 48h into the bin — now and hourly.
   const sweepBins = async () => {
     const reg = await loadRegistry();
@@ -100,7 +104,7 @@ export async function serve(opts: ServeOptions = {}): Promise<{ port: number; cl
   }
 
   const app = express();
-  registerApi(app, watcher, runs, autopilot, workers, { verbose });
+  registerApi(app, watcher, runs, autopilot, workers, guest, { verbose });
   // Vite content-hashes assets (safe to cache forever); index.html references
   // them, so it must never be cached or a rebuild won't be picked up.
   app.use(

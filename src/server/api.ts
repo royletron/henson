@@ -37,6 +37,7 @@ import type { Autopilot } from "../runner/autopilot.js";
 import type { RunEvent } from "../core/events.js";
 import { registerAuth } from "./auth.js";
 import type { WorkerRegistry } from "./workers.js";
+import type { GuestController } from "./guest-controller.js";
 import { loadSettings, verifyGuestToken } from "../core/settings.js";
 import { workingTreeRef } from "../core/git.js";
 
@@ -76,6 +77,7 @@ export function registerApi(
   runs: RunManager,
   autopilot: Autopilot,
   workers: WorkerRegistry,
+  guest: GuestController,
   opts: ApiOptions = {},
 ): void {
   const verbose = opts.verbose ?? false;
@@ -137,6 +139,72 @@ export function registerApi(
       if (!res.headersSent) res.status(500);
       res.end();
     });
+  });
+
+  // A read-only board snapshot for a guest to view in their own app (token-gated).
+  app.get("/api/worker/board", async (req: Request, res: Response) => {
+    const token = (req.header("x-mysteron-guest-token") || req.query.token || "").toString();
+    const settings = await loadSettings();
+    if (!verifyGuestToken(settings, token)) return res.status(401).json({ error: "invalid guest token" });
+    const reg = await loadRegistry();
+    const projects = [];
+    for (const entry of reg.projects) {
+      const tickets = await listTickets(entry.path);
+      projects.push({
+        id: entry.id,
+        name: entry.name,
+        tickets: tickets.map((t) => ({
+          id: t.id,
+          title: t.title,
+          state: t.state,
+          priority: t.priority,
+          assignee: t.assignee,
+        })),
+      });
+    }
+    res.json({ projects });
+  });
+
+  // --- This machine offering itself as a guest to a host -------------------
+  app.get("/api/guest", (_req: Request, res: Response) => {
+    res.json({ guest: guest.status() ?? null });
+  });
+
+  app.post("/api/guest", (req: Request, res: Response) => {
+    const { hostUrl, token, forMs, name, capacity } = (req.body ?? {}) as {
+      hostUrl?: string;
+      token?: string;
+      forMs?: number;
+      name?: string;
+      capacity?: number;
+    };
+    if (!hostUrl || !token) return res.status(400).json({ error: "hostUrl and token are required" });
+    try {
+      const status = guest.start({ hostUrl, token, label: name, forMs, capacity });
+      res.json({ guest: status });
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
+  });
+
+  app.delete("/api/guest", (_req: Request, res: Response) => {
+    guest.stop();
+    res.json({ ok: true });
+  });
+
+  // Proxy the host's board so the guest can see it in their own app.
+  app.get("/api/guest/board", async (_req: Request, res: Response) => {
+    const conn = guest.connection;
+    if (!conn) return res.json({ projects: [] });
+    try {
+      const r = await fetch(new URL("/api/worker/board", conn.hostUrl).toString(), {
+        headers: { "x-mysteron-guest-token": conn.token },
+      });
+      if (!r.ok) return res.status(502).json({ error: `host board fetch failed (${r.status})` });
+      res.json(await r.json());
+    } catch (e) {
+      res.status(502).json({ error: (e as Error).message });
+    }
   });
 
   // --- Projects ------------------------------------------------------------

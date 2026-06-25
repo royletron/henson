@@ -11,16 +11,27 @@ import { renderStreamEvent, runResultStats } from "../runner/manager.js";
 
 const pexec = promisify(execFile);
 
-export interface JoinOptions {
+export interface GuestOptions {
   hostUrl: string;
-  token?: string;
+  token: string;
   label?: string;
   /** Offer duration in ms (default 2h). */
   forMs?: number;
   capacity?: number;
 }
 
-/** http(s)://host  →  ws(s)://host/worker */
+export interface GuestStatus {
+  offering: boolean;
+  state: "connecting" | "offered" | "rejected" | "stopped";
+  hostUrl: string;
+  label: string;
+  projectName?: string;
+  expiresAt?: string;
+  message?: string;
+  activeRuns: number;
+}
+
+/** http(s)://host → ws(s)://host/worker */
 function workerWsUrl(hostUrl: string): string {
   const u = new URL(hostUrl);
   u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
@@ -30,52 +41,101 @@ function workerWsUrl(hostUrl: string): string {
 }
 
 /**
- * Offer this machine to a host as a guest worker. Phase 1: connect, register a
- * time-boxed offer, and hold the connection open (heartbeating) until the offer
- * expires or the user quits. Reconnects on a dropped socket.
+ * A managed connection that offers this machine to a host as a guest worker:
+ * registers a time-boxed offer, heartbeats, reconnects, and runs dispatched
+ * tickets locally. Used both by the `join` CLI and by the running server (so a
+ * guest can offer from their own web app).
  */
-export async function joinHost(opts: JoinOptions): Promise<void> {
-  if (!opts.token) throw new Error("join requires --token <guest-token> (get it from the host's Settings)");
-  const wsUrl = workerWsUrl(opts.hostUrl);
-  const label = opts.label || os.hostname();
-  const capacity = Math.max(1, opts.capacity ?? 1);
-  const forMs = opts.forMs ?? 2 * 60 * 60 * 1000;
-  const deadline = Date.now() + forMs;
+export class GuestConnection {
+  private socket?: WebSocket;
+  private heartbeat?: ReturnType<typeof setInterval>;
+  private endTimer?: ReturnType<typeof setTimeout>;
+  private stopped = false;
+  private deadline = 0;
+  private state: GuestStatus["state"] = "connecting";
+  private message?: string;
+  private projectName?: string;
+  private expiresAt?: string;
+  private active = 0;
 
-  let stopped = false;
-  let socket: WebSocket | undefined;
-  let heartbeat: ReturnType<typeof setInterval> | undefined;
+  readonly hostUrl: string;
+  readonly token: string;
+  readonly label: string;
+  readonly forMs: number;
+  readonly capacity: number;
 
-  const log = (s: string) => console.log(`[guest] ${s}`);
+  /** Called whenever the status changes (for live UI / logging). */
+  onChange?: (status: GuestStatus) => void;
 
-  const stop = (msg: string, code = 0) => {
-    if (stopped) return;
-    stopped = true;
-    if (heartbeat) clearInterval(heartbeat);
+  constructor(opts: GuestOptions) {
+    if (!opts.token) throw new Error("a guest token is required (get it from the host's Settings)");
+    this.hostUrl = opts.hostUrl;
+    this.token = opts.token;
+    this.label = opts.label || os.hostname();
+    this.forMs = opts.forMs ?? 2 * 60 * 60 * 1000;
+    this.capacity = Math.max(1, opts.capacity ?? 1);
+  }
+
+  status(): GuestStatus {
+    return {
+      offering: !this.stopped,
+      state: this.state,
+      hostUrl: this.hostUrl,
+      label: this.label,
+      projectName: this.projectName,
+      expiresAt: this.expiresAt,
+      message: this.message,
+      activeRuns: this.active,
+    };
+  }
+
+  private set(state: GuestStatus["state"], message?: string): void {
+    this.state = state;
+    this.message = message;
+    this.onChange?.(this.status());
+  }
+
+  start(): void {
+    this.deadline = Date.now() + this.forMs;
+    this.connect();
+    this.endTimer = setTimeout(() => this.stop("Offer window elapsed."), this.forMs);
+    this.endTimer.unref?.();
+  }
+
+  stop(reason = "Offer withdrawn."): void {
+    if (this.stopped) return;
+    this.stopped = true;
+    if (this.heartbeat) clearInterval(this.heartbeat);
+    if (this.endTimer) clearTimeout(this.endTimer);
     try {
-      socket?.close();
+      this.socket?.close();
     } catch {
       /* already closed */
     }
-    log(msg);
-    process.exitCode = code;
-  };
+    this.set("stopped", reason);
+  }
 
-  process.on("SIGINT", () => stop("Stopped — offer withdrawn.", 0));
+  private connect(): void {
+    if (this.stopped) return;
+    const remaining = this.deadline - Date.now();
+    if (remaining <= 0) return this.stop("Offer window elapsed.");
 
-  const connect = () => {
-    if (stopped) return;
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) return stop("Offer window elapsed — disconnected.");
-
-    socket = new WebSocket(wsUrl);
+    this.set("connecting", `Connecting to ${this.hostUrl}…`);
+    const socket = new WebSocket(workerWsUrl(this.hostUrl));
+    this.socket = socket;
 
     socket.on("open", () => {
-      socket!.send(
-        JSON.stringify({ t: "register", token: opts.token, label, capacity, expiresInMs: remaining }),
+      socket.send(
+        JSON.stringify({
+          t: "register",
+          token: this.token,
+          label: this.label,
+          capacity: this.capacity,
+          expiresInMs: this.deadline - Date.now(),
+        }),
       );
-      heartbeat = setInterval(() => {
-        if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ t: "heartbeat" }));
+      this.heartbeat = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ t: "heartbeat" }));
       }, 15_000);
     });
 
@@ -87,47 +147,60 @@ export async function joinHost(opts: JoinOptions): Promise<void> {
         return;
       }
       if (msg.t === "registered") {
-        log(`offered to "${msg.projectName}" as "${label}" (×${capacity}) until ${new Date(msg.expiresAt).toLocaleString()}.`);
-        log("Waiting for work… (Ctrl-C to withdraw)");
+        this.projectName = msg.projectName;
+        this.expiresAt = msg.expiresAt;
+        this.set("offered", `Offered to "${msg.projectName}" until ${new Date(msg.expiresAt).toLocaleString()}.`);
       } else if (msg.t === "rejected") {
-        stop(`Rejected: ${msg.reason}`, 1);
+        this.set("rejected", msg.reason);
+        this.stop(`Rejected: ${msg.reason}`);
       } else if (msg.t === "expired") {
-        stop("Offer expired on the host — disconnected.");
-      } else if (msg.t === "dispatch" && socket) {
-        log(`↘ ticket: ${msg.ticketTitle}`);
-        void handleDispatch(socket, msg, opts.hostUrl, opts.token!);
+        this.stop("Offer expired on the host.");
+      } else if (msg.t === "dispatch") {
+        void this.runDispatch(socket, msg);
       }
     });
 
     socket.on("close", () => {
-      if (heartbeat) clearInterval(heartbeat);
-      if (stopped) return;
-      // Reconnect after a short delay until the offer window elapses.
-      if (deadline - Date.now() > 0) {
-        log("Disconnected — retrying in 3s…");
-        setTimeout(connect, 3000);
+      if (this.heartbeat) clearInterval(this.heartbeat);
+      if (this.stopped) return;
+      if (this.deadline - Date.now() > 0) {
+        this.set("connecting", "Disconnected — retrying in 3s…");
+        setTimeout(() => this.connect(), 3000);
       } else {
-        stop("Offer window elapsed — disconnected.");
+        this.stop("Offer window elapsed.");
       }
     });
 
-    socket.on("error", (err) => {
-      log(`connection error: ${(err as Error).message}`);
-      // 'close' fires next and handles retry.
+    socket.on("error", () => {
+      /* 'close' fires next and handles retry */
     });
+  }
+
+  private async runDispatch(socket: WebSocket, msg: DispatchMsg): Promise<void> {
+    this.active++;
+    this.onChange?.(this.status());
+    try {
+      await handleDispatch(socket, msg, this.hostUrl, this.token);
+    } finally {
+      this.active = Math.max(0, this.active - 1);
+      this.onChange?.(this.status());
+    }
+  }
+}
+
+/** CLI entry: offer this machine and stay up until the window elapses or Ctrl-C. */
+export async function joinHost(opts: GuestOptions): Promise<void> {
+  const conn = new GuestConnection(opts);
+  conn.onChange = (s) => {
+    if (s.message) console.log(`[guest] ${s.message}`);
+    if (s.state === "offered") console.log("[guest] Waiting for work… (Ctrl-C to withdraw)");
   };
+  process.on("SIGINT", () => conn.stop("Stopped — offer withdrawn."));
+  conn.start();
 
-  log(`Connecting to ${opts.hostUrl} …`);
-  connect();
-
-  // Hard stop when the window elapses even if idle.
-  const endTimer = setTimeout(() => stop("Offer window elapsed — disconnected."), forMs);
-  endTimer.unref?.();
-
-  // Keep the process alive until stopped.
   await new Promise<void>((resolve) => {
     const check = setInterval(() => {
-      if (stopped) {
+      if (conn.status().state === "stopped") {
         clearInterval(check);
         resolve();
       }
@@ -135,6 +208,8 @@ export async function joinHost(opts: JoinOptions): Promise<void> {
     check.unref?.();
   });
 }
+
+// --- dispatched-ticket execution -------------------------------------------
 
 type LineFn = (stream: "stdout" | "stderr" | "system", text: string) => void;
 
@@ -225,7 +300,6 @@ async function handleDispatch(socket: WebSocket, msg: DispatchMsg, hostUrl: stri
     await pexec("tar", ["-xf", tar, "-C", workdir]);
     await fs.rm(tar, { force: true });
 
-    // A base commit so we can diff what the agent changes.
     await git(["init", "-q"]);
     await git(["add", "-A"]);
     await git([...id, "commit", "-q", "-m", "base", "--allow-empty"]);
