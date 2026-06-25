@@ -13,7 +13,7 @@ import {
   type TicketState,
 } from "./api";
 import { useAsync } from "./hooks";
-import { LiveDot, RunTimer, CloudGlyph, RunMachine } from "./ui";
+import { LiveDot, RunTimer, RunMachine } from "./ui";
 import type { AppEvent } from "./App";
 
 function agentViewUrl(projectId: string, ticketId: string, run = false): string {
@@ -281,9 +281,6 @@ function AgentHistory({ projectId, ticketId, evt }: { projectId: string; ticketI
   );
   const runs = (data?.runs ?? []).filter((r) => r.ticketId === ticketId);
   const active = runs.some((r) => r.status === "running");
-  // Guest runs get their own lane so the history doesn't read as one jumbled list.
-  const local = runs.filter((r) => !r.guestLabel);
-  const guests = runs.filter((r) => r.guestLabel);
 
   const runRow = (r: RunSummary) => {
     const s = RUN_STATUS[r.status];
@@ -305,14 +302,14 @@ function AgentHistory({ projectId, ticketId, evt }: { projectId: string; ticketI
             <span>{fmtWhen(r.startedAt)}</span>
             <RunTimer run={r} prefix="· " />
             {r.costUsd != null && <span title={r.numTurns != null ? `${r.numTurns} turns` : undefined}>· {fmtCost(r.costUsd)}</span>}
-            {r.branch && (
-              <span class="inline-flex items-center gap-1 text-violet-300" title={`Work committed to branch ${r.branch} — git merge ${r.branch}`}>
-                ⎇ {r.branch}
-              </span>
-            )}
           </span>
         </span>
-        <span class="flex justify-end">
+        <span class="flex items-center justify-end gap-2">
+          {r.branch && (
+            <span class="inline-flex items-center gap-1 text-violet-300" title={`Work committed to branch ${r.branch} — git merge ${r.branch}`}>
+              ⎇ {r.branch}
+            </span>
+          )}
           <RunMachine run={r} />
         </span>
       </a>
@@ -342,17 +339,7 @@ function AgentHistory({ projectId, ticketId, evt }: { projectId: string; ticketI
       ) : runs.length === 0 ? (
         <div class="text-sm text-zinc-500">No agent runs yet. Press “Run agent” to start the companion.</div>
       ) : (
-        <div class="flex flex-col gap-3">
-          {local.length > 0 && <div class="flex flex-col gap-1.5">{local.map(runRow)}</div>}
-          {guests.length > 0 && (
-            <div class="flex flex-col gap-1.5">
-              <span class="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-sky-400">
-                <CloudGlyph size={11} /> Guest runs
-              </span>
-              {guests.map(runRow)}
-            </div>
-          )}
-        </div>
+        <div class="flex flex-col gap-1.5">{runs.map(runRow)}</div>
       )}
     </div>
   );
