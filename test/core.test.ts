@@ -132,6 +132,32 @@ test("init adopts an existing committed .mysteron (cloned-from-elsewhere)", asyn
   assert.ok((await listMemories(root)).some((m) => m.name === "team-convention"));
 });
 
+test("memory: nested names mirror the src tree, list recurses, traversal rejected", async () => {
+  const { writeMemory, readMemory, listMemories } = await import("../src/core/memory.js");
+  const root = path.join(tmp, "mem");
+  await fs.mkdir(root, { recursive: true });
+
+  // A nested name (mimicking src/) is created with its parent dir and round-trips.
+  const rel = await writeMemory(
+    root,
+    "core/board",
+    "---\nname: core/board\ndescription: who owns the board\nmetadata:\n  type: project\n---\n\nFact one.\n\nFact two — many facts per file is fine.\n",
+  );
+  assert.equal(rel, "core/board.md");
+  assert.match((await readMemory(root, "core/board")) ?? "", /Fact two/);
+
+  // listMemories walks subdirectories and reports nested names + frontmatter.
+  await writeMemory(root, "top", "---\nname: top\ndescription: top-level note\n---\nhi\n");
+  const all = await listMemories(root);
+  const board = all.find((m) => m.name === "core/board");
+  assert.equal(board?.description, "who owns the board");
+  assert.equal(board?.type, "project");
+  assert.ok(all.some((m) => m.name === "top"));
+
+  // Traversal outside the memory dir is rejected.
+  await assert.rejects(() => writeMemory(root, "../escape", "nope"));
+});
+
 test("tickets: create, list (priority sorted), update, next", async () => {
   await createTicket(projectRoot, { title: "low one", priority: "low", state: "ready" });
   const hi = await createTicket(projectRoot, { title: "high one", priority: "high", state: "ready" });

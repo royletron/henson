@@ -197,13 +197,20 @@ export async function buildMcpServer(
   // --- Memory ---------------------------------------------------------------
   server.registerTool(
     "list_memories",
-    { description: "List project memories (facts the companion has saved).", inputSchema: {} },
+    {
+      description:
+        "List project memory — shared context mirroring the src tree (nested names like 'core/board'). Check it before working an area.",
+      inputSchema: {},
+    },
     async () => json(await listMemories(projectRoot)),
   );
 
   server.registerTool(
     "read_memory",
-    { description: "Read a project memory by name.", inputSchema: { name: z.string() } },
+    {
+      description: "Read a project memory by name (may be nested, e.g. 'core/board').",
+      inputSchema: { name: z.string() },
+    },
     async ({ name }) => {
       const m = await readMemory(projectRoot, name);
       return m === undefined ? text(`Memory not found: ${name}`) : text(m);
@@ -214,7 +221,7 @@ export async function buildMcpServer(
     "write_memory",
     {
       description:
-        "Save a project memory (markdown with frontmatter: name, description, metadata.type).",
+        "Save shared project memory as you work — markdown with frontmatter (name, description, metadata.type). Name it to mirror the src tree (e.g. 'core/board'); a file may hold several related facts. Record what you learn about an area, e.g. who owns it.",
       inputSchema: { name: z.string(), content: z.string() },
     },
     async ({ name, content }) =>

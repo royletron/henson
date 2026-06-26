@@ -92,7 +92,7 @@ my-app/
     docs/ETIQUETTE.md      # the rules every companion must follow
     docs/*.md              # any other shared docs
     companions/<id>.md     # each companion's editable role brief
-    memory/*.md            # saved facts (Claude-memory format)
+    memory/**/*.md         # shared context, mirroring the src tree (Claude-memory format)
     runs/<runId>.json      # run metadata — committed (companion, hostname, status)
     runs/<runId>.log       # run output — gitignored, local to the machine that ran it
 ```
