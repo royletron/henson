@@ -81,7 +81,7 @@ export function Board({
 
   return (
     <div>
-      <AutopilotBar detail={detail} />
+      <AutopilotBar detail={detail} reload={reload} />
 
       <div class="mb-3.5 hidden text-sm text-zinc-500 md:block">
         Drag a card between columns to change its state, or within a column to reorder it —
@@ -331,7 +331,7 @@ function TicketCard({
 
 /** The autopilot status card — only shown while it's running; collapsed otherwise.
  *  Starting/stopping lives in the sticky toolbar (see Project). */
-function AutopilotBar({ detail }: { detail: ProjectDetail }) {
+function AutopilotBar({ detail, reload }: { detail: ProjectDetail; reload: () => void }) {
   const projectId = detail.entry.id;
   const ap = detail.autopilot;
   if (!ap || ap.status === "stopped") return null;
@@ -347,6 +347,18 @@ function AutopilotBar({ detail }: { detail: ProjectDetail }) {
           {s.label}
         </span>
         <div class="flex-1" />
+        {ap.status === "paused" && (
+          <button
+            class="text-xs text-zinc-400 hover:text-zinc-200 underline"
+            title="Clear the stale rate-limit snapshot so the autopilot re-evaluates now"
+            onClick={async () => {
+              await api("/api/usage/snapshot", { method: "DELETE" });
+              reload();
+            }}
+          >
+            Reset limit
+          </button>
+        )}
         <span class="text-sm text-zinc-500">{ap.completed || 0} done this session</span>
       </div>
 

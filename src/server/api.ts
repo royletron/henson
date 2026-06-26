@@ -36,6 +36,7 @@ import { RECIPES, findRecipe } from "../core/recipes.js";
 import { BOARD_STATES, TICKET_STATES, type TicketState } from "../core/types.js";
 import { allPlugins, enabledPlugins } from "../plugins/manager.js";
 import { usageMonitorPlugin } from "../plugins/usage-monitor/index.js";
+import { deleteSnapshot } from "../plugins/usage-monitor/snapshot.js";
 import type { ProjectWatcher } from "../core/watcher.js";
 import { type RunManager, runSummary, CompanionBusyError, agentAvailable, agentUnavailableMessage } from "../runner/manager.js";
 import { checkUsageBudget } from "../runner/budget.js";
@@ -573,20 +574,25 @@ export function registerApi(
       const budget = await checkUsageBudget(r.entry.path, r.config);
       const usageMaxed = !!budget && !budget.safeToContinue;
       const noLocalAgent = !agentAvailable(r.config);
-      if (usageMaxed || noLocalAgent) {
+      // When no local agent: try a guest, then fail with a clear message.
+      if (noLocalAgent) {
         const worker = workers.idle()[0];
         if (worker) {
           const run = await runs.startOnWorker(args, workers, { id: worker.id, label: worker.label });
           if (!run) return res.status(503).json({ error: "The guest worker became unavailable. Try again." });
           return res.json({ run: runSummary(run) });
         }
-        if (usageMaxed) {
-          const resetWhen = budget!.resetAt ? ` (resets around ${new Date(budget!.resetAt).toLocaleTimeString()})` : "";
-          return res.status(503).json({
-            error: `Host Claude usage is maxed out (${budget!.percentUsed}%)${resetWhen} and no guest worker is available to take this over. Connect a guest with \`mysteron join\`, or wait for the window to reset.`,
-          });
-        }
         return res.status(503).json({ error: agentUnavailableMessage(r.config) });
+      }
+      // When usage is maxed: prefer a guest if one is free, otherwise fall through
+      // to a local run — the user explicitly chose to run, so let them.
+      if (usageMaxed) {
+        const worker = workers.idle()[0];
+        if (worker) {
+          const run = await runs.startOnWorker(args, workers, { id: worker.id, label: worker.label });
+          if (!run) return res.status(503).json({ error: "The guest worker became unavailable. Try again." });
+          return res.json({ run: runSummary(run) });
+        }
       }
       const run = await runs.start(args);
       res.json({ run: runSummary(run) });
@@ -691,6 +697,11 @@ export function registerApi(
   });
 
   // --- Usage (first-party plugin surfaced over HTTP) -----------------------
+  app.delete("/api/usage/snapshot", async (_req: Request, res: Response) => {
+    await deleteSnapshot();
+    res.json({ ok: true });
+  });
+
   app.get("/api/projects/:id/usage", async (req: Request, res: Response) => {
     const r = await resolve(req.params.id);
     if (!r) return notFound(res);

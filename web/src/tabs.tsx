@@ -390,9 +390,20 @@ export function PluginsTab({ detail }: { detail: ProjectDetail }) {
                   Real limits from Claude · captured {fmtWhen(u.live.capturedAt)}
                 </p>
                 {u.live.lockout && (
-                  <p class="mt-1 text-xs text-red-400">
-                    ⛔ Limit reached — holding this reading until it resets{u.live.stale ? " (no newer data yet)" : ""}.
-                  </p>
+                  <div class="mt-1 flex items-center gap-2">
+                    <p class="text-xs text-red-400">
+                      ⛔ Limit reached — holding this reading until it resets{u.live.stale ? " (no newer data yet)" : ""}.
+                    </p>
+                    <button
+                      class="text-xs text-zinc-400 hover:text-zinc-200 underline"
+                      onClick={async () => {
+                        await api("/api/usage/snapshot", { method: "DELETE" });
+                        setUsageNonce((x) => x + 1);
+                      }}
+                    >
+                      Reset
+                    </button>
+                  </div>
                 )}
                 <UsageBar label="Session (5h)" bucket={u.live.session} margin={u.safetyMarginPercent} />
                 <UsageBar label="Weekly (7d)" bucket={u.live.weekly} margin={u.safetyMarginPercent} />

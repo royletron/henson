@@ -119,3 +119,7 @@ export async function readSnapshot(): Promise<RateLimitSnapshot | undefined> {
     return undefined;
   }
 }
+
+export async function deleteSnapshot(): Promise<void> {
+  await fs.unlink(snapshotPath()).catch(() => undefined);
+}

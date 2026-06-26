@@ -57,7 +57,13 @@ function bucketLockedOut(b: Bucket | undefined, nowMs: number): boolean {
 function isLockedOut(u: { status?: string; session?: Bucket; weekly?: Bucket }, nowMs: number): boolean {
   if (bucketLockedOut(u.session, nowMs) || bucketLockedOut(u.weekly, nowMs)) return true;
   if (u.status === "rejected") {
-    return [u.session?.resetAt, u.weekly?.resetAt].some((r) => r != null && Date.parse(r) > nowMs);
+    // Use the *earliest* reset time: once the first bucket clears the lockout lifts.
+    // (Using .some() would keep it alive until the weekly reset, a week later.)
+    const resets = [u.session?.resetAt, u.weekly?.resetAt]
+      .filter((r): r is string => r != null)
+      .map((r) => Date.parse(r))
+      .filter(Number.isFinite);
+    return resets.length > 0 && Math.min(...resets) > nowMs;
   }
   return false;
 }
