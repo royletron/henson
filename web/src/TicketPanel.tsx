@@ -17,7 +17,8 @@ import { LiveDot, RunTimer, RunMachine } from "./ui";
 import { Lock } from "lucide-preact";
 import type { AppEvent } from "./App";
 
-function agentViewUrl(projectId: string, ticketId: string, run = false): string {
+function agentViewUrl(projectId: string, ticketId: string, run = false, runId?: string): string {
+  if (runId) return `#/project/${projectId}/ticket/${ticketId}/runs/${runId}`;
   return `#/project/${projectId}/ticket/${ticketId}${run ? "/run" : ""}`;
 }
 
@@ -404,7 +405,7 @@ function AgentHistory({ projectId, ticketId, evt }: { projectId: string; ticketI
     return (
       <a
         key={r.id}
-        href={agentViewUrl(projectId, ticketId)}
+        href={agentViewUrl(projectId, ticketId, false, r.id)}
         title={r.command}
         class="flex flex-col gap-1 rounded-sm border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-400 hover:border-violet-500"
       >
