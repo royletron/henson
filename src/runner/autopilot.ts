@@ -1,8 +1,14 @@
 import { bus, type AutopilotStatus } from "../core/events.js";
-import { blockedTicketIds, listTickets, nextTicketForCompanion } from "../core/board.js";
-import { companionAllowsGuest, companionAllowsLocal, getCompanion } from "../core/companions.js";
+import { blockedTicketIds, listTickets } from "../core/board.js";
 import { loadProjectConfig } from "../core/project.js";
 import { checkUsageBudget } from "./budget.js";
+import {
+  DispatchQueue,
+  executorFor,
+  planAssignments,
+  runningCompanionId,
+  type Assignment,
+} from "./dispatch.js";
 import type { ProjectConfig } from "../core/types.js";
 import type { RunManager } from "./manager.js";
 import type { WorkerRegistry } from "../server/workers.js";
@@ -30,6 +36,8 @@ export interface AutopilotState {
   completed: number;
   startedAt: string;
   activity: { at: string; text: string }[];
+  /** Live dispatch-queue snapshot, refreshed each tick (observability). */
+  queue: { depth: number; inFlight: number; maxWaitMs: number };
 }
 
 /**
@@ -68,6 +76,7 @@ export class Autopilot {
       completed: 0,
       startedAt: new Date().toISOString(),
       activity: [],
+      queue: { depth: 0, inFlight: 0, maxWaitMs: 0 },
     };
     this.states.set(projectId, state);
     this.stopFlags.set(projectId, false);
@@ -85,6 +94,9 @@ export class Autopilot {
   }
 
   private async loop(state: AutopilotState): Promise<void> {
+    // One queue per loop: the board's ready column is reconciled into it each
+    // tick, and it owns in-flight dedup, depth and wait-time (no per-tick run scan).
+    const queue = new DispatchQueue();
     while (!this.stopFlags.get(state.projectId)) {
       const config = await loadProjectConfig(state.projectRoot);
       if (!config) {
@@ -93,130 +105,97 @@ export class Autopilot {
         continue;
       }
 
-      // 1) Check the host's usage budget up front: when it's maxed the host
-      //    can't run locally, so guests absorb the work instead of it stalling.
+      // When the host's Claude budget is maxed it can't run locally, so the
+      // planner offloads only to guests until the window resets.
       const budget = await checkUsageBudget(state.projectRoot, config);
       const hostMaxed = !!(budget && !budget.safeToContinue);
 
-      // 2) Fan ready tickets out to connected guests. Guests run on their own
-      //    machine + Claude account, so they work regardless of the host's
-      //    budget. Normally they take only unassigned tickets; when the host is
-      //    maxed they also pick up companion-assigned ones (see fanOutToGuests).
-      const guestWork = await this.fanOutToGuests(state, config, hostMaxed);
+      // Reconcile the queue with the board: ready, unblocked, not already in flight.
+      const ready = await listTickets(state.projectRoot, { state: "ready" });
+      const blocked = await blockedTicketIds(state.projectRoot);
+      queue.sync(ready.filter((t) => !blocked.has(t.id)));
 
-      // 3) If the host is maxed, pause local companions until the window resets
-      //    — the guests handled above keep the board moving in the meantime.
+      // Plan one tick of work across idle guests + free local companions, then
+      // start each through its executor — one uniform dispatch path.
+      const idleWorkers = this.workers.idle().map((w) => ({ id: w.id, label: w.label }));
+      const plan = planAssignments({
+        queued: queue.queued(),
+        config,
+        idleWorkers,
+        hostMaxed,
+        isCompanionBusy: (id) => queue.isCompanionBusy(id),
+      });
+      for (const assignment of plan) {
+        if (this.stopFlags.get(state.projectId)) break;
+        this.dispatch(state, config, queue, assignment);
+      }
+
+      state.queue = { depth: queue.depth(), inFlight: queue.inFlight(), maxWaitMs: queue.maxWaitMs() };
+
       if (hostMaxed && budget) {
         const resetWhen = budget.resetAt ? new Date(budget.resetAt).toLocaleTimeString() : "the end of the window";
+        const offloaded = plan.some((a) => a.target.kind === "guest");
         this.set(
           state,
           "paused",
-          `Usage budget reached (${budget.percentUsed}%).${guestWork ? " Offloading ready work to guests." : ""} Local companions wait for the window to reset around ${resetWhen}.`,
+          `Usage budget reached (${budget.percentUsed}%).${offloaded ? " Offloading ready work to guests." : ""} Local companions wait for the window to reset around ${resetWhen}.`,
           { pausedUntil: budget.resetAt },
         );
         await this.sleep(state, BUDGET_RECHECK_MS());
         continue;
       }
 
-      // 4) Per companion: if it's free, dispatch its next ready ticket. Each
-      //    companion does one task at a time; the soloist also takes unassigned ones.
-      let anyWork = guestWork;
-      for (const companion of config.companions) {
-        if (this.stopFlags.get(state.projectId)) break;
-        if (this.runs.activeForCompanion(state.projectId, companion.id)) {
-          anyWork = true;
-          continue;
-        }
-        // A companion pinned away from "local" runs on guests only — the guest
-        // fan-out above picks up its tickets; don't start it on this machine.
-        if (!companionAllowsLocal(companion)) continue;
-        const ticket = await nextTicketForCompanion(state.projectRoot, companion.id, {
-          includeUnassigned: companion.role === "soloist",
-        });
-        if (!ticket) continue;
-        anyWork = true;
-        try {
-          const run = await this.runs.start({
-            projectId: state.projectId,
-            projectRoot: state.projectRoot,
-            config,
-            ticket,
-          });
-          this.addActivity(state, `▶ ${companion.name} → ${ticket.title}`);
-          // Log completion without blocking the tick (so other companions dispatch).
-          void this.runs.waitFor(run.id).then((finished) => {
-            if (finished.status === "done") state.completed++;
-            const icon = finished.status === "done" ? "✓" : finished.status === "stopped" ? "■" : "✖";
-            this.addActivity(state, `${icon} ${companion.name}: ${ticket.title} — ${finished.status}`);
-            this.set(state, state.status, state.message);
-          });
-        } catch (err) {
-          this.addActivity(state, `✖ ${companion.name}: ${(err as Error).message}`);
-        }
-      }
-
-      const busy = this.runs.busyCompanionIds(state.projectId).length;
-      if (busy > 0) this.set(state, "running", `${busy} companion(s) working.`);
+      const working = queue.inFlight();
+      if (working > 0) this.set(state, "running", `${working} companion(s) working.`);
       else this.set(state, "idle", "No ready tickets for a free companion — waiting for work.");
 
       // Tick quickly while there's work (so a freed companion picks up its next
       // ticket promptly); poll slowly when fully idle.
-      await this.sleep(state, anyWork ? BREATHER_MS() : IDLE_POLL_MS());
+      await this.sleep(state, plan.length || working ? BREATHER_MS() : IDLE_POLL_MS());
     }
     if (state.status !== "stopped") this.set(state, "stopped", "Autopilot stopped.");
   }
 
   /**
-   * Hand ready tickets to idle guest workers (one each). Normally guests take
-   * only unassigned tickets, so they never steal a local companion's assigned
-   * work. When `hostMaxed` is true the host can't run locally anyway, so guests
-   * also absorb companion-assigned tickets to keep the board moving. Either way
-   * a ticket already running (locally or on a guest) is skipped via activeForTicket.
+   * Start one planned assignment through its executor and wire its lifecycle back
+   * to the queue: a finished run that landed (done) releases the claim; anything
+   * else requeues it (bumping attempts) to be retried on a later tick. Doesn't
+   * block the tick — other assignments dispatch concurrently.
    */
-  private async fanOutToGuests(state: AutopilotState, config: ProjectConfig, hostMaxed: boolean): Promise<boolean> {
-    const idleWorkers = this.workers.idle();
-    if (idleWorkers.length === 0) return false;
-    const ready = await listTickets(state.projectRoot, { state: "ready" });
-    const blocked = await blockedTicketIds(state.projectRoot);
-    const companionFor = (t: { companionId?: string }) =>
-      t.companionId ? getCompanion(config, t.companionId) : undefined;
-    const free = ready.filter((t) => {
-      if (blocked.has(t.id) || this.runs.activeForTicket(state.projectId, t.id)) return false;
-      // Unassigned tickets fan out to guests as before. A companion-assigned ticket
-      // goes to a guest when the host is maxed, or when its companion is pinned away
-      // from local (so guests are the only place it can run).
-      if (!t.companionId) return true;
-      return hostMaxed || !companionAllowsLocal(companionFor(t));
-    });
-    let dispatched = false;
-    for (const worker of idleWorkers) {
-      if (this.stopFlags.get(state.projectId)) break;
-      // Take the first free ticket this guest is allowed to run (respecting the
-      // companion's "runs on" pin); skip the worker if none fit.
-      const idx = free.findIndex((t) => companionAllowsGuest(companionFor(t), worker.label));
-      if (idx < 0) continue;
-      const [ticket] = free.splice(idx, 1);
-      try {
-        const run = await this.runs.startOnWorker(
-          { projectId: state.projectId, projectRoot: state.projectRoot, config, ticket },
-          this.workers,
-          { id: worker.id, label: worker.label },
-        );
-        dispatched = true;
-        this.addActivity(state, `☁ ${worker.label} → ${ticket.title}`);
-        if (run) {
-          void this.runs.waitFor(run.id).then((finished) => {
-            if (finished.status === "done") state.completed++;
-            const icon = finished.status === "done" ? "✓" : finished.status === "stopped" ? "■" : "✖";
-            this.addActivity(state, `${icon} ${worker.label}: ${ticket.title} — ${finished.status}`);
-            this.set(state, state.status, state.message);
-          });
+  private dispatch(state: AutopilotState, config: ProjectConfig, queue: DispatchQueue, assignment: Assignment): void {
+    const { item, target } = assignment;
+    const ticket = item.ticket;
+    const who = target.kind === "guest" ? target.label : config.companions.find((c) => c.id === target.companionId)?.name ?? "companion";
+    const icon = target.kind === "guest" ? "☁" : "▶";
+    const ctx = { projectId: state.projectId, projectRoot: state.projectRoot, config };
+    const executor = executorFor(target, this.runs, this.workers, ctx);
+    queue.claim(ticket.id, runningCompanionId(config, ticket));
+
+    executor
+      .start(ticket)
+      .then((run) => {
+        if (!run) {
+          queue.requeue(ticket.id);
+          this.addActivity(state, `✖ ${who}: ${ticket.title} — could not start`);
+          return;
         }
-      } catch (err) {
-        this.addActivity(state, `✖ ${worker.label}: ${(err as Error).message}`);
-      }
-    }
-    return dispatched;
+        this.addActivity(state, `${icon} ${who} → ${ticket.title}`);
+        void this.runs.waitFor(run.id).then((finished) => {
+          if (finished.status === "done") {
+            state.completed++;
+            queue.release(ticket.id);
+          } else {
+            queue.requeue(ticket.id);
+          }
+          const mark = finished.status === "done" ? "✓" : finished.status === "stopped" ? "■" : "✖";
+          this.addActivity(state, `${mark} ${who}: ${ticket.title} — ${finished.status}`);
+          this.set(state, state.status, state.message);
+        });
+      })
+      .catch((err) => {
+        queue.requeue(ticket.id);
+        this.addActivity(state, `✖ ${who}: ${(err as Error).message}`);
+      });
   }
 
   /** Sleep in small steps so stop() takes effect promptly. */
