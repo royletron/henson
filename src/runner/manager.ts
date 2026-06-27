@@ -373,7 +373,7 @@ export function buildPrompt(
     return [
       `You are continuing as ${comp?.name ?? "the companion"} on the project "${config.name}".`,
       `Work on the following ticket end-to-end, following the project etiquette. If a Mysteron MCP server is configured, use it to read docs/memory and to move this ticket to "review" when the work is complete and tests pass.`,
-      `First, read this ticket's current state via the Mysteron MCP. If it is already in "review", "done" or "bin", the work is finished — stop immediately and exit without making any changes.`,
+      `First, read this ticket's current state — call \`mcp__mysteron__get_ticket\` with id \`${ticket.id}\` if the Mysteron MCP is available, or fall back to reading \`.mysteron/board/${ticket.id}.md\` directly. If the state is already "review", "done" or "bin", the work is finished — stop immediately and exit without making any changes.`,
       ``,
       `# Ticket ${ticket.id}: ${ticket.title}`,
       ticket.body || "(no description)",
@@ -398,7 +398,7 @@ export function buildPrompt(
   return [
     `You are ${comp?.name ?? "the companion"} (role: ${comp?.role ?? "soloist"}), working on the project "${config.name}".`,
     `Work on the following ticket end-to-end, following the project etiquette. If a Mysteron MCP server is configured, use it to read docs/memory and to move this ticket to "review" when the work is complete and tests pass.`,
-    `First, read this ticket's current state via the Mysteron MCP. If it is already in "review", "done" or "bin", the work is finished — stop immediately and exit without making any changes. Do NOT try to reconstruct the work from the git history or commit log; those commits are often absent from the snapshot you were given, and trusting the ticket's state is correct.`,
+    `First, read this ticket's current state — call \`mcp__mysteron__get_ticket\` with id \`${ticket.id}\` if the Mysteron MCP is available, or fall back to reading \`.mysteron/board/${ticket.id}.md\` directly. If it is already in "review", "done" or "bin", the work is finished — stop immediately and exit without making any changes. Do NOT try to reconstruct the work from the git history or commit log; those commits are often absent from the snapshot you were given, and trusting the ticket's state is correct.`,
     ...brief,
     ``,
     `# Ticket ${ticket.id}: ${ticket.title}`,
