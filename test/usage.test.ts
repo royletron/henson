@@ -110,6 +110,56 @@ test("proxy forwards requests and captures rate-limit headers to a snapshot", as
   }
 });
 
+test("a non-unified response does not clobber a good unified snapshot", async () => {
+  // First call returns real unified buckets; later calls (e.g. token-counting)
+  // carry only legacy request-limit headers. The good reading must survive.
+  let n = 0;
+  const upstream = http.createServer((req, res) => {
+    n += 1;
+    if (n === 1) {
+      res.setHeader("anthropic-ratelimit-unified-status", "allowed");
+      res.setHeader("anthropic-ratelimit-unified-5h-utilization", "0.66");
+      res.setHeader("anthropic-ratelimit-unified-7d-utilization", "0.3");
+    } else {
+      res.setHeader("anthropic-ratelimit-requests-limit", "50");
+      res.setHeader("anthropic-ratelimit-requests-remaining", "49");
+    }
+    res.end(JSON.stringify({ ok: true }));
+  });
+  await new Promise<void>((r) => upstream.listen(0, "127.0.0.1", r));
+  const upstreamPort = (upstream.address() as import("node:net").AddressInfo).port;
+
+  const proxy = await startRateLimitProxy({ upstream: `http://127.0.0.1:${upstreamPort}` });
+  const hit = () =>
+    new Promise<void>((resolve, reject) => {
+      http
+        .get(`${proxy.url}/v1/messages`, (res) => {
+          res.on("data", () => {});
+          res.on("end", () => resolve());
+        })
+        .on("error", reject);
+    });
+  try {
+    await hit();
+    let snap = await readSnapshot();
+    for (let i = 0; i < 50 && !snap?.unified?.session; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+      snap = await readSnapshot();
+    }
+    assert.equal(snap!.unified?.session?.utilizationPct, 66);
+
+    // A later bucket-less response must NOT wipe the live reading.
+    await new Promise((r) => setTimeout(r, 3100)); // clear the write throttle
+    await hit();
+    await new Promise((r) => setTimeout(r, 200));
+    const after = await readSnapshot();
+    assert.equal(after!.unified?.session?.utilizationPct, 66, "good unified reading survived");
+  } finally {
+    await proxy.close();
+    await new Promise<void>((r) => upstream.close(() => r()));
+  }
+});
+
 after(async () => {
   const { promises: fs } = await import("node:fs");
   await fs.rm(tmp, { recursive: true, force: true }).catch(() => undefined);

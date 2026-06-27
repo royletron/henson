@@ -53,13 +53,20 @@ export async function startRateLimitProxy(opts: {
   const capture = (headers: http.IncomingHttpHeaders): void => {
     const raw = extractRateLimitHeaders(headers);
     if (Object.keys(raw).length === 0) return; // not an Anthropic API response
+    // Many Anthropic responses (token-counting, other endpoints) carry only the
+    // legacy `anthropic-ratelimit-requests-*` headers and no unified session/
+    // weekly buckets. Persisting one would clobber the last good reading and
+    // force the monitor back to its token estimate — so only snapshot a capture
+    // that actually tells us about the session or weekly allowance.
+    const unified = parseUnifiedLimits(raw);
+    if (!unified?.session && !unified?.weekly) return;
     const now = Date.now();
     if (now - lastWrite < MIN_WRITE_INTERVAL_MS) return;
     lastWrite = now;
     const snap: RateLimitSnapshot = {
       capturedAt: new Date(now).toISOString(),
       raw,
-      unified: parseUnifiedLimits(raw),
+      unified,
     };
     void writeSnapshot(snap);
   };
