@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { docsDir } from "./paths.js";
+import { atomicWrite } from "./io.js";
 import type { DocSummary } from "./types.js";
 
 /** Reject names that try to escape the docs directory. */
@@ -53,7 +54,7 @@ export async function writeDoc(
   await fs.mkdir(dir, { recursive: true });
   const safe = safeDocName(name);
   const full = path.join(dir, safe);
-  await fs.writeFile(full, content, "utf8");
+  await atomicWrite(full, content);
   const stat = await fs.stat(full);
   return { name: safe, path: full, bytes: stat.size, updated: stat.mtime.toISOString() };
 }

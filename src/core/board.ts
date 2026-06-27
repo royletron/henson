@@ -3,6 +3,7 @@ import path from "node:path";
 import matter from "gray-matter";
 import { nanoid } from "nanoid";
 import { attachmentsDir, boardDir } from "./paths.js";
+import { atomicWrite, withFileLock } from "./io.js";
 import { unmergedBranchTicketIds } from "./git.js";
 import {
   TICKET_STATES,
@@ -151,11 +152,11 @@ export async function createTicket(
     body: input.body ?? "",
     blockedBy: input.blockedBy?.length ? input.blockedBy : undefined,
   };
-  await fs.writeFile(ticketPath(projectRoot, ticket.id), serializeTicket(ticket), "utf8");
+  await atomicWrite(ticketPath(projectRoot, ticket.id), serializeTicket(ticket));
   return ticket;
 }
 
-export async function updateTicket(
+async function doUpdateTicket(
   projectRoot: string,
   id: string,
   patch: Partial<Omit<Ticket, "id" | "created">>,
@@ -169,8 +170,16 @@ export async function updateTicket(
     created: existing.created,
     updated: now(),
   };
-  await fs.writeFile(ticketPath(projectRoot, id), serializeTicket(updated), "utf8");
+  await atomicWrite(ticketPath(projectRoot, id), serializeTicket(updated));
   return updated;
+}
+
+export function updateTicket(
+  projectRoot: string,
+  id: string,
+  patch: Partial<Omit<Ticket, "id" | "created">>,
+): Promise<Ticket | undefined> {
+  return withFileLock(ticketPath(projectRoot, id), () => doUpdateTicket(projectRoot, id, patch));
 }
 
 export async function deleteTicket(projectRoot: string, id: string): Promise<boolean> {
@@ -189,39 +198,40 @@ function safeName(name: string): string {
 }
 
 /** Save an image attachment for a ticket and record it in the ticket's frontmatter. */
-export async function addAttachment(
+export function addAttachment(
   projectRoot: string,
   id: string,
   name: string,
   data: Buffer,
 ): Promise<Ticket | undefined> {
-  const ticket = await getTicket(projectRoot, id);
-  if (!ticket) return undefined;
   const dir = attachmentsDir(projectRoot, id);
-  await fs.mkdir(dir, { recursive: true });
-
-  // Keep names unique so a re-upload doesn't clobber an existing attachment.
-  let file = safeName(name);
-  const existing = new Set(ticket.attachments ?? []);
-  if (existing.has(file)) {
-    const ext = path.extname(file);
-    file = `${path.basename(file, ext)}-${nanoid(4)}${ext}`;
-  }
-  await fs.writeFile(path.join(dir, file), data);
-  return updateTicket(projectRoot, id, { attachments: [...(ticket.attachments ?? []), file] });
+  return withFileLock(ticketPath(projectRoot, id), async () => {
+    const ticket = await getTicket(projectRoot, id);
+    if (!ticket) return undefined;
+    await fs.mkdir(dir, { recursive: true });
+    // Keep names unique so a re-upload doesn't clobber an existing attachment.
+    let file = safeName(name);
+    const existing = new Set(ticket.attachments ?? []);
+    if (existing.has(file)) {
+      const ext = path.extname(file);
+      file = `${path.basename(file, ext)}-${nanoid(4)}${ext}`;
+    }
+    await fs.writeFile(path.join(dir, file), data);
+    return doUpdateTicket(projectRoot, id, { attachments: [...(ticket.attachments ?? []), file] });
+  });
 }
 
-export async function removeAttachment(
+export function removeAttachment(
   projectRoot: string,
   id: string,
   name: string,
 ): Promise<Ticket | undefined> {
-  const ticket = await getTicket(projectRoot, id);
-  if (!ticket) return undefined;
-  const file = safeName(name);
-  await fs.rm(path.join(attachmentsDir(projectRoot, id), file), { force: true });
-  return updateTicket(projectRoot, id, {
-    attachments: (ticket.attachments ?? []).filter((a) => a !== file),
+  return withFileLock(ticketPath(projectRoot, id), async () => {
+    const ticket = await getTicket(projectRoot, id);
+    if (!ticket) return undefined;
+    const file = safeName(name);
+    await fs.rm(path.join(attachmentsDir(projectRoot, id), file), { force: true });
+    return doUpdateTicket(projectRoot, id, { attachments: (ticket.attachments ?? []).filter((a) => a !== file) });
   });
 }
 

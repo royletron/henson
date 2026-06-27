@@ -298,6 +298,25 @@ test("moveTicketsByState bulk-moves a whole column", async () => {
   assert.equal((await listTickets(root, { state: "ready" })).length, 1);
 });
 
+test("concurrent updateTicket calls on the same ticket all land", async () => {
+  const root = path.join(tmp, "concurrent");
+  await fs.mkdir(root, { recursive: true });
+  const ticket = await createTicket(root, { title: "race", state: "backlog", priority: "low", labels: [] });
+
+  // Without serialization: each reads stale state, last writer wins — other patches lost.
+  // With serialization: each reads what the previous wrote, so all three fields land.
+  await Promise.all([
+    updateTicket(root, ticket.id, { state: "ready" }),
+    updateTicket(root, ticket.id, { priority: "high" }),
+    updateTicket(root, ticket.id, { labels: ["important"] }),
+  ]);
+
+  const final = await getTicket(root, ticket.id);
+  assert.equal(final?.state, "ready");
+  assert.equal(final?.priority, "high");
+  assert.deepEqual(final?.labels, ["important"]);
+});
+
 test("docs round-trip with path-traversal guard", async () => {
   await writeDoc(projectRoot, "DESIGN", "# design\nbody");
   assert.match((await readDoc(projectRoot, "DESIGN.md")) ?? "", /# design/);

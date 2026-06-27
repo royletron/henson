@@ -2,6 +2,7 @@ import { promises as fs, type Dirent } from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
 import { memoryDir } from "./paths.js";
+import { atomicWrite } from "./io.js";
 import type { MemorySummary } from "./types.js";
 
 /**
@@ -81,6 +82,6 @@ export async function writeMemory(
 ): Promise<string> {
   const { full, rel } = resolveMemory(projectRoot, name);
   await fs.mkdir(path.dirname(full), { recursive: true });
-  await fs.writeFile(full, content, "utf8");
+  await atomicWrite(full, content);
   return rel;
 }
