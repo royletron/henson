@@ -99,6 +99,8 @@ export interface DailyCost {
   date: string;
   totalUsd: number;
   runs: number;
+  /** Distinct tickets that incurred cost on this day — lets the UI plot avg cost/ticket over time. */
+  tickets: number;
 }
 
 export interface ProjectCost {
@@ -136,12 +138,30 @@ export interface CostStats {
   topTickets: TicketCost[];
 }
 
-function emptyDaily(date: string): DailyCost {
-  return { date, totalUsd: 0, runs: 0 };
+/** A day bucket that tracks distinct tickets via a set, collapsed to a count on output. */
+interface DailyAcc {
+  date: string;
+  totalUsd: number;
+  runs: number;
+  tickets: Set<string>;
 }
 
-function sortedDaily(map: Map<string, DailyCost>): DailyCost[] {
-  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+function emptyDaily(date: string): DailyAcc {
+  return { date, totalUsd: 0, runs: 0, tickets: new Set() };
+}
+
+function bumpDaily(map: Map<string, DailyAcc>, day: string, costUsd: number, ticketId: string): void {
+  const d = map.get(day) ?? emptyDaily(day);
+  d.totalUsd += costUsd;
+  d.runs += 1;
+  d.tickets.add(ticketId);
+  map.set(day, d);
+}
+
+function sortedDaily(map: Map<string, DailyAcc>): DailyCost[] {
+  return [...map.values()]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((d) => ({ date: d.date, totalUsd: d.totalUsd, runs: d.runs, tickets: d.tickets.size }));
 }
 
 /**
@@ -155,11 +175,11 @@ export async function costStats(): Promise<CostStats> {
   const reg = await loadRegistry();
   const nameById = new Map(reg.projects.map((p) => [p.id, p.name]));
 
-  const overallDaily = new Map<string, DailyCost>();
+  const overallDaily = new Map<string, DailyAcc>();
   const ticketKeys = new Set<string>();
   const projects = new Map<
     string,
-    { totalUsd: number; runs: number; tickets: Set<string>; daily: Map<string, DailyCost> }
+    { totalUsd: number; runs: number; tickets: Set<string>; daily: Map<string, DailyAcc> }
   >();
   const tickets = new Map<string, TicketCost>();
   let totalUsd = 0;
@@ -167,10 +187,7 @@ export async function costStats(): Promise<CostStats> {
   for (const e of entries) {
     totalUsd += e.costUsd;
     const day = dayKey(e.endedAt);
-    const od = overallDaily.get(day) ?? emptyDaily(day);
-    od.totalUsd += e.costUsd;
-    od.runs += 1;
-    overallDaily.set(day, od);
+    bumpDaily(overallDaily, day, e.costUsd, e.ticketId);
 
     const tKey = `${e.projectId}/${e.ticketId}`;
     ticketKeys.add(tKey);
@@ -183,10 +200,7 @@ export async function costStats(): Promise<CostStats> {
     p.totalUsd += e.costUsd;
     p.runs += 1;
     p.tickets.add(e.ticketId);
-    const pd = p.daily.get(day) ?? emptyDaily(day);
-    pd.totalUsd += e.costUsd;
-    pd.runs += 1;
-    p.daily.set(day, pd);
+    bumpDaily(p.daily, day, e.costUsd, e.ticketId);
 
     const t = tickets.get(tKey) ?? {
       projectId: e.projectId,

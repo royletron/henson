@@ -79,6 +79,18 @@ test("aggregates cross-project stats", async () => {
     ["2026-06-01", "2026-06-02"],
   );
 
+  // Each day reports distinct tickets so the UI can plot avg cost/ticket over time.
+  // 2026-06-01: r1 on t1 → 1 ticket. 2026-06-02: r2 (t1) + r3 (t9) → 2 tickets.
+  assert.deepEqual(
+    stats.daily.map((d) => d.tickets),
+    [1, 2],
+  );
+  // Per-project daily ticket counts stay scoped to the project (Alpha never sees t9).
+  assert.deepEqual(
+    alpha.daily.map((d) => d.tickets),
+    [1, 1],
+  );
+
   // Priciest ticket first: t9 ($1) outranks t1 (0.25 + 0.5 = 0.75).
   assert.equal(stats.topTickets[0].ticketId, "t9");
   assert.equal(stats.topTickets[1].ticketId, "t1");

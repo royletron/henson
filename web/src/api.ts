@@ -277,6 +277,7 @@ export interface DailyCost {
   date: string;
   totalUsd: number;
   runs: number;
+  tickets: number;
 }
 
 export interface ProjectCost {
