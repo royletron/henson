@@ -1,12 +1,12 @@
 ---
 title: Dependency List
-state: done
+state: bin
 priority: medium
 companionId: c1bf55fe-3e93-410d-94a7-cfde4dc1f80e
 assignee: Waldorf the Compiler
 labels: []
 created: '2026-06-25T17:29:46.040Z'
-updated: '2026-06-25T17:54:17.259Z'
+updated: '2026-06-27T10:54:04.126Z'
 blockedBy:
   - ovhBZnIa
   - V751xvlW

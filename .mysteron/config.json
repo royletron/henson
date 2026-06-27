@@ -20,7 +20,8 @@
       "role": "Developer",
       "avatarSeed": "Zoot the Swift",
       "runsOn": [
-        "Darrens-MacBook-Pro.local"
+        "Darrens-MacBook-Pro.local",
+        "local"
       ]
     }
   ],

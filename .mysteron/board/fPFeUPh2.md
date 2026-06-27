@@ -1,12 +1,12 @@
 ---
 title: Guest Ignoring Commit Rules
-state: review
+state: bin
 priority: medium
 companionId: 82be1826-9999-453f-bbfc-999f8dc4a2dc
 assignee: Zoot the Swift
 labels: []
 created: '2026-06-26T11:44:50.295Z'
-updated: '2026-06-26T11:49:00.454Z'
+updated: '2026-06-27T10:53:56.595Z'
 ---
 
 I just had a ticket that completely ignore the git commit rules I have set for the project. I can see from the log:

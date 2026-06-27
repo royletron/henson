@@ -5,8 +5,9 @@ priority: high
 labels:
   - tech-debt
   - reliability
+  - v2
 created: '2026-06-25T19:06:01.084Z'
-updated: '2026-06-25T19:06:01.084Z'
+updated: '2026-06-27T11:07:49.460Z'
 ---
 
 **Problem.** Every write to the shared `.mysteron/` state is a bare read-modify-write `fs.writeFile` with no locking and no temp+rename:

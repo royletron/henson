@@ -8,3 +8,4 @@ A short contract for any agent working in this project.
 - **Write few comments** — let clear code and names carry the meaning; comment only the surprising bits.
 - **Match the surrounding style** rather than introducing new conventions.
 - **Keep tickets honest** — if tests fail, say so; if a step was skipped, note it on the ticket.
+- **Keep memory current** — memory is shared context that mirrors the `src/` tree (e.g. `core/board`). As you work an area, record what you learn there; when you read a file to find out whether you own something and discover you do, write that down. Commit memory alongside your code.

@@ -1,6 +1,6 @@
 ---
 title: Consider moving companion list + actions into a sidebar
-state: review
+state: bin
 priority: low
 companionId: 82be1826-9999-453f-bbfc-999f8dc4a2dc
 createdBy: 82be1826-9999-453f-bbfc-999f8dc4a2dc
@@ -9,7 +9,7 @@ labels:
   - ui
   - follow-up
 created: '2026-06-26T11:07:49.300Z'
-updated: '2026-06-26T12:21:14.731Z'
+updated: '2026-06-27T10:53:56.506Z'
 order: 0
 ---
 

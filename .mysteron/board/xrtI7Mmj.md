@@ -1,13 +1,14 @@
 ---
 title: node_modules install-fallback for isolated local runs
-state: backlog
+state: ready
 priority: low
 createdBy: 82be1826-9999-453f-bbfc-999f8dc4a2dc
 labels:
   - follow-up
   - enhancement
 created: '2026-06-26T10:53:03.281Z'
-updated: '2026-06-26T10:53:03.281Z'
+updated: '2026-06-27T10:54:21.948Z'
+order: 0
 ---
 
 Follow-up to `1jCct4Yz` (Isolate Local Run).

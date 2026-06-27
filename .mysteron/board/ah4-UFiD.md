@@ -5,8 +5,9 @@ priority: medium
 labels:
   - feature
   - spec-gap
+  - v2
 created: '2026-06-25T19:06:01.208Z'
-updated: '2026-06-25T19:06:01.208Z'
+updated: '2026-06-27T11:07:49.940Z'
 ---
 
 **Spec promise, partially delivered.** SPEC: a companion can *"offload it to a number of sub-agents (we can provide recipes for agent teams, designer, backend dev, frontend dev etc)."*

@@ -1,12 +1,12 @@
 ---
 title: Use a Library
-state: review
+state: bin
 priority: medium
 companionId: c1bf55fe-3e93-410d-94a7-cfde4dc1f80e
 assignee: Waldorf the Compiler
 labels: []
 created: '2026-06-25T18:25:56.088Z'
-updated: '2026-06-26T11:27:04.085Z'
+updated: '2026-06-27T10:53:56.570Z'
 order: 7
 ---
 

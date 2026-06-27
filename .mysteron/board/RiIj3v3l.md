@@ -1,6 +1,6 @@
 ---
 title: Isolate local runs (implement chosen worker-isolation option)
-state: review
+state: bin
 priority: high
 createdBy: c1bf55fe-3e93-410d-94a7-cfde4dc1f80e
 assignee: Waldorf the Compiler
@@ -8,7 +8,7 @@ labels:
   - enhancement
   - needs-decision
 created: '2026-06-26T10:15:52.771Z'
-updated: '2026-06-26T11:27:04.069Z'
+updated: '2026-06-27T10:53:56.546Z'
 order: 2
 ---
 

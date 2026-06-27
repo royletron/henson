@@ -1,12 +1,12 @@
 ---
 title: Agent history
-state: done
+state: bin
 priority: medium
 companionId: c1bf55fe-3e93-410d-94a7-cfde4dc1f80e
 assignee: Waldorf the Compiler
 labels: []
 created: '2026-06-25T16:45:16.819Z'
-updated: '2026-06-25T17:54:23.803Z'
+updated: '2026-06-27T10:54:04.134Z'
 ---
 
 Back on the Agent history

@@ -1,12 +1,12 @@
 ---
 title: Companion Runs On
-state: review
+state: bin
 priority: medium
 companionId: 82be1826-9999-453f-bbfc-999f8dc4a2dc
 assignee: Zoot the Swift
 labels: []
 created: '2026-06-26T10:39:12.786Z'
-updated: '2026-06-26T11:27:04.079Z'
+updated: '2026-06-27T10:53:56.560Z'
 order: 5
 ---
 

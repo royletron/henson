@@ -1,12 +1,12 @@
 ---
 title: Connected Guest
-state: done
+state: bin
 priority: medium
 companionId: c1bf55fe-3e93-410d-94a7-cfde4dc1f80e
 assignee: Waldorf the Compiler
 labels: []
 created: '2026-06-25T17:28:04.582Z'
-updated: '2026-06-25T18:11:45.025Z'
+updated: '2026-06-27T10:54:04.118Z'
 blockedBy:
   - TPt4PR2D
 order: 0
