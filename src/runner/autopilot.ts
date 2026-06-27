@@ -1,5 +1,5 @@
 import { bus, type AutopilotStatus } from "../core/events.js";
-import { blockedTicketIds, listTickets } from "../core/board.js";
+import { blockedTicketIds, getTicket, listTickets, updateTicket } from "../core/board.js";
 import { loadProjectConfig } from "../core/project.js";
 import { checkUsageBudget } from "./budget.js";
 import {
@@ -8,10 +8,15 @@ import {
   planAssignments,
   runningCompanionId,
   type Assignment,
+  type WorkItem,
 } from "./dispatch.js";
-import type { ProjectConfig } from "../core/types.js";
-import type { RunManager } from "./manager.js";
+import { classifyFailure, decideRetry, retryPolicyFromEnv, type RetryPolicy } from "./retry.js";
+import type { ProjectConfig, Ticket } from "../core/types.js";
+import type { Run, RunManager } from "./manager.js";
 import type { WorkerRegistry } from "../server/workers.js";
+
+/** Label put on a ticket that's been dead-lettered, so it's visible on the board. */
+const STUCK_LABEL = "stuck";
 
 function envMs(name: string, fallback: number): number {
   const n = Number(process.env[name]);
@@ -38,6 +43,8 @@ export interface AutopilotState {
   activity: { at: string; text: string }[];
   /** Live dispatch-queue snapshot, refreshed each tick (observability). */
   queue: { depth: number; inFlight: number; maxWaitMs: number };
+  /** Tickets dead-lettered (parked for a human) this session — see the retry policy. */
+  deadLettered: number;
 }
 
 /**
@@ -53,6 +60,7 @@ export class Autopilot {
   constructor(
     private runs: RunManager,
     private workers: WorkerRegistry,
+    private policy: RetryPolicy = retryPolicyFromEnv(),
   ) {}
 
   status(projectId: string): AutopilotState | undefined {
@@ -77,6 +85,7 @@ export class Autopilot {
       startedAt: new Date().toISOString(),
       activity: [],
       queue: { depth: 0, inFlight: 0, maxWaitMs: 0 },
+      deadLettered: 0,
     };
     this.states.set(projectId, state);
     this.stopFlags.set(projectId, false);
@@ -119,7 +128,7 @@ export class Autopilot {
       // start each through its executor — one uniform dispatch path.
       const idleWorkers = this.workers.idle().map((w) => ({ id: w.id, label: w.label }));
       const plan = planAssignments({
-        queued: queue.queued(),
+        queued: queue.eligible(),
         config,
         idleWorkers,
         hostMaxed,
@@ -158,9 +167,10 @@ export class Autopilot {
 
   /**
    * Start one planned assignment through its executor and wire its lifecycle back
-   * to the queue: a finished run that landed (done) releases the claim; anything
-   * else requeues it (bumping attempts) to be retried on a later tick. Doesn't
-   * block the tick — other assignments dispatch concurrently.
+   * to the queue and the retry policy: a finished run that landed releases the
+   * claim; a failure is classified (transient vs clean) and either requeued with a
+   * backoff or, past the cap, dead-lettered. Doesn't block the tick — other
+   * assignments dispatch concurrently.
    */
   private dispatch(state: AutopilotState, config: ProjectConfig, queue: DispatchQueue, assignment: Assignment): void {
     const { item, target } = assignment;
@@ -175,27 +185,109 @@ export class Autopilot {
       .start(ticket)
       .then((run) => {
         if (!run) {
-          queue.requeue(ticket.id);
-          this.addActivity(state, `✖ ${who}: ${ticket.title} — could not start`);
+          // Couldn't even start (e.g. the guest vanished) — transient, retry it.
+          void this.handleFailure(state, queue, item, who, "retryable", "could not start");
           return;
         }
         this.addActivity(state, `${icon} ${who} → ${ticket.title}`);
-        void this.runs.waitFor(run.id).then((finished) => {
-          if (finished.status === "done") {
-            state.completed++;
-            queue.release(ticket.id);
-          } else {
-            queue.requeue(ticket.id);
-          }
-          const mark = finished.status === "done" ? "✓" : finished.status === "stopped" ? "■" : "✖";
-          this.addActivity(state, `${mark} ${who}: ${ticket.title} — ${finished.status}`);
-          this.set(state, state.status, state.message);
-        });
+        void this.runs.waitFor(run.id).then((finished) => this.onFinished(state, queue, item, who, finished));
       })
       .catch((err) => {
-        queue.requeue(ticket.id);
-        this.addActivity(state, `✖ ${who}: ${(err as Error).message}`);
+        void this.handleFailure(state, queue, item, who, "retryable", (err as Error).message);
       });
+  }
+
+  /** Route a finished run: landed → release; stopped by a human → drop; failure → retry policy. */
+  private onFinished(state: AutopilotState, queue: DispatchQueue, item: WorkItem, who: string, run: Run): void {
+    const ticket = item.ticket;
+    // "done" with the patch landed is the only success. A "done" run whose patch
+    // wouldn't apply (landFailed) bounced the ticket back to ready — that's a failure.
+    if (run.status === "done" && !run.landFailed) {
+      state.completed++;
+      queue.release(ticket.id);
+      this.addActivity(state, `✓ ${who}: ${ticket.title} — done`);
+      this.set(state, state.status, state.message);
+      return;
+    }
+    if (run.status === "stopped") {
+      // A human stopped this run — don't count it against the retry cap. The ticket
+      // is left wherever stop put it; releasing the claim lets the board govern it.
+      queue.release(ticket.id);
+      this.addActivity(state, `■ ${who}: ${ticket.title} — stopped`);
+      this.set(state, state.status, state.message);
+      return;
+    }
+    const reason = run.limitHit ? "usage limit" : run.landFailed ? "patch did not apply" : "agent failed";
+    void this.handleFailure(state, queue, item, who, classifyFailure(run), reason);
+  }
+
+  /**
+   * Apply the retry policy to a failed attempt: requeue with a backoff while under
+   * the cap, or dead-letter the ticket (park it on `backlog` with a `stuck` label +
+   * a note) once the cap is reached, so the board never spins on one card forever.
+   *
+   * The claim is held across the board write and only released afterwards, so a
+   * concurrent {@link DispatchQueue.sync} can't re-add or drop the item mid-flight.
+   */
+  private async handleFailure(
+    state: AutopilotState,
+    queue: DispatchQueue,
+    item: WorkItem,
+    who: string,
+    kind: ReturnType<typeof classifyFailure>,
+    reason: string,
+  ): Promise<void> {
+    const ticket = item.ticket;
+    const attempts = item.attempts + 1; // this attempt is now spent
+    const decision = decideRetry({ kind, attempts, policy: this.policy });
+    if (decision.action === "dead-letter") {
+      // Park it (still claimed, so it's protected from sync), then release.
+      await this.deadLetter(state, ticket, attempts, kind, reason).catch(() => undefined);
+      queue.release(ticket.id);
+      state.deadLettered++;
+      this.addActivity(state, `⚠ ${who}: ${ticket.title} — parked (stuck) · ${reason} · ${decision.reason}`);
+    } else {
+      // Promote the ticket back to ready so the retry is dispatchable (still claimed
+      // while we write), then requeue with the backoff holding it out until due.
+      // (Transient failures already bounced it to ready; this also rescues a clean
+      // failure that was left parked in-progress.)
+      await updateTicket(state.projectRoot, ticket.id, { state: "ready" }).catch(() => undefined);
+      queue.requeue(ticket.id, decision.delayMs);
+      const secs = Math.round(decision.delayMs / 1000);
+      this.addActivity(state, `↻ ${who}: ${ticket.title} — ${reason}, retry ${attempts}/${this.cap(kind)} in ${secs}s`);
+    }
+    this.set(state, state.status, state.message);
+  }
+
+  /** The attempt cap for a failure kind (for activity messages). */
+  private cap(kind: ReturnType<typeof classifyFailure>): number {
+    return kind === "retryable" ? this.policy.maxAttempts : this.policy.maxNonRetryableAttempts;
+  }
+
+  /**
+   * Park a ticket the policy has given up on: move it to `backlog`, add the `stuck`
+   * label, and append a note recording why and how many attempts it took, so a human
+   * can see it on the board and pick it up. Keeping it off `ready` stops the autopilot
+   * re-dispatching it.
+   */
+  private async deadLetter(
+    state: AutopilotState,
+    ticket: Ticket,
+    attempts: number,
+    kind: ReturnType<typeof classifyFailure>,
+    reason: string,
+  ): Promise<void> {
+    const current = (await getTicket(state.projectRoot, ticket.id)) ?? ticket;
+    const labels = current.labels.includes(STUCK_LABEL) ? current.labels : [...current.labels, STUCK_LABEL];
+    const note = [
+      `> ⚠ **Stuck — parked by autopilot** (${new Date().toISOString()})`,
+      `> Gave up after ${attempts} ${kind} attempt(s): ${reason}. A human should take a look.`,
+    ].join("\n");
+    const body = current.body.includes("Stuck — parked by autopilot")
+      ? current.body
+      : `${current.body.trim()}\n\n${note}`;
+    await updateTicket(state.projectRoot, ticket.id, { state: "backlog", labels, body });
+    bus.emitEvent({ type: "board-changed", projectId: state.projectId, detail: ticket.id });
   }
 
   /** Sleep in small steps so stop() takes effect promptly. */

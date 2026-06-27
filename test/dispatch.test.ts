@@ -93,6 +93,34 @@ test("requeue bumps attempts, frees the companion, and survives the next sync", 
   assert.equal(q.requeue("a")?.attempts, 2);
 });
 
+test("requeue with a backoff holds an item out of dispatch until it's due", () => {
+  let clock = 1000;
+  const q = new DispatchQueue(() => clock);
+  q.sync([ticket("a")]);
+  q.claim("a", "c1");
+  q.requeue("a", 500); // not eligible until clock 1500
+  assert.equal(q.depth(), 1, "still queued");
+  assert.deepEqual(ids(q.eligible()), [], "not yet eligible");
+  clock = 1499;
+  assert.deepEqual(ids(q.eligible()), [], "still backing off");
+  clock = 1500;
+  assert.deepEqual(ids(q.eligible()), ["a"], "eligible once the backoff elapses");
+});
+
+test("a backoff survives the next sync (attempts + eligibility both carry over)", () => {
+  let clock = 1000;
+  const q = new DispatchQueue(() => clock);
+  q.sync([ticket("a")]);
+  q.claim("a", "c1");
+  q.requeue("a", 500);
+  // The ticket is still ready next tick; the backoff must not be reset by sync.
+  q.sync([ticket("a")]);
+  assert.deepEqual(ids(q.eligible()), [], "still backing off after sync");
+  assert.equal(q.queued()[0].attempts, 1);
+  clock = 1500;
+  assert.deepEqual(ids(q.eligible()), ["a"]);
+});
+
 test("maxWaitMs reports the longest a queued item has waited", () => {
   let clock = 1000;
   const q = new DispatchQueue(() => clock);

@@ -89,6 +89,9 @@ export interface Run {
   limitHit?: boolean;
   /** Set when Claude rejected the session id (wrong account / already exists elsewhere). */
   sessionError?: boolean;
+  /** Set when the agent's work couldn't be landed (patch wouldn't apply) — a transient,
+   *  retryable failure even though the agent itself exited cleanly. */
+  landFailed?: boolean;
   /** For guest runs: the branch the returned patch was committed to (only when it landed on a dedicated branch, not the current one). */
   branch?: string;
   /** For guest runs: the working-tree snapshot the guest diffed against (pinned so `git apply --3way` can merge the result). */
@@ -805,6 +808,7 @@ export class RunManager {
             );
           } else {
             landFailed = true;
+            run.landFailed = true;
             this.append(
               run,
               "system",
@@ -975,6 +979,7 @@ export class RunManager {
           `✓ guest changes committed to branch ${res.branch} (${res.commit?.slice(0, 8)}) — \`git merge ${res.branch}\` to bring them into your branch`,
         );
       } else {
+        run.landFailed = true;
         this.append(
           run,
           "system",

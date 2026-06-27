@@ -24,6 +24,8 @@ export interface WorkItem {
   attempts: number;
   /** Epoch ms when the item first entered the queue (for wait-time observability). */
   enqueuedAt: number;
+  /** Epoch ms before which the item must not be dispatched (retry backoff); 0 = now. */
+  nextEligibleAt?: number;
   /** While in flight: the companion id the run is attributed to (so release frees it). */
   runsAs?: string;
 }
@@ -87,6 +89,16 @@ export class DispatchQueue {
     return this.order;
   }
 
+  /**
+   * Waiting items ready to dispatch *now* — i.e. past any retry backoff. The
+   * planner runs against these so a just-failed ticket isn't re-dispatched until
+   * its backoff has elapsed, even though it stays in the queue.
+   */
+  eligible(): readonly WorkItem[] {
+    const t = this.now();
+    return this.order.filter((it) => (it.nextEligibleAt ?? 0) <= t);
+  }
+
   /** Whether a ticket is waiting or in flight — O(1). */
   has(ticketId: string): boolean {
     return this.queuedIds.has(ticketId) || this.claimed.has(ticketId);
@@ -138,14 +150,16 @@ export class DispatchQueue {
 
   /**
    * Work failed or needs another go — drop the claim and put the item back at the
-   * tail of the queue, bumping its attempt count. (The next sync re-orders it to
-   * the board's position; this just keeps the item, and its attempts, alive.)
+   * tail of the queue, bumping its attempt count. `delayMs` holds it out of
+   * dispatch for that long (retry backoff). (The next sync re-orders it to the
+   * board's position; this just keeps the item, its attempts, and its backoff alive.)
    */
-  requeue(ticketId: string): WorkItem | undefined {
+  requeue(ticketId: string, delayMs = 0): WorkItem | undefined {
     const item = this.drop(ticketId);
     if (!item) return undefined;
     item.attempts++;
     item.runsAs = undefined;
+    item.nextEligibleAt = delayMs > 0 ? this.now() + delayMs : undefined;
     if (!this.queuedIds.has(ticketId)) {
       this.order.push(item);
       this.queuedIds.add(ticketId);

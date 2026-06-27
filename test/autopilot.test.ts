@@ -14,7 +14,7 @@ process.env.MYSTERON_AUTOPILOT_BUDGET_MS = "300";
 process.env.MYSTERON_AUTOPILOT_BREATHER_MS = "50";
 
 const { initProject, loadProjectConfig, saveProjectConfig } = await import("../src/core/project.js");
-const { createTicket, listTickets } = await import("../src/core/board.js");
+const { createTicket, getTicket, listTickets } = await import("../src/core/board.js");
 const { RunManager } = await import("../src/runner/manager.js");
 const { Autopilot } = await import("../src/runner/autopilot.js");
 const { WorkerRegistry } = await import("../src/server/workers.js");
@@ -88,4 +88,42 @@ test("autopilot never runs a guest-pinned companion on the local host", async ()
   const still = await listTickets(root, { state: "ready" });
   assert.equal(still.length, 1, "the ticket stays ready, waiting for its guest");
   assert.equal(still[0].id, ticket.id);
+});
+
+test("a ticket that keeps failing is retried then dead-lettered (capped + parked)", async () => {
+  const root = path.join(tmp, "poison");
+  await fs.mkdir(root, { recursive: true });
+  const { config } = await initProject(root, { name: "Poison" });
+  const created = await createTicket(root, { title: "Cannot pass", state: "ready" });
+
+  // An agent that hits a usage limit (retryable) and exits non-zero, every time.
+  const prevCmd = process.env.MYSTERON_AGENT_CMD;
+  process.env.MYSTERON_AGENT_CMD = 'echo "usage limit reached"; exit 1';
+  try {
+    // Tiny, deterministic policy: 2 retryable attempts, ~50ms backoff, no jitter.
+    const policy = { maxAttempts: 2, maxNonRetryableAttempts: 1, baseDelayMs: 50, maxDelayMs: 50, jitter: 0 };
+    const ap = new Autopilot(new RunManager(), new WorkerRegistry(), policy);
+    ap.start(config.id, root);
+
+    // It gives up after the cap and parks the ticket for a human.
+    await waitFor(() => (ap.status(config.id)?.deadLettered ?? 0) >= 1, 12_000);
+    ap.stop(config.id);
+
+    const parked = await getTicket(root, created.id);
+    assert.equal(parked?.state, "backlog", "parked off the ready column");
+    assert.ok(parked?.labels.includes("stuck"), "labelled stuck so it's visible");
+    assert.match(parked?.body ?? "", /parked by autopilot/i, "the failure reason is noted on the ticket");
+
+    // It was actually retried before giving up (the cap is 2), and the backoff was logged.
+    const acts = ap.status(config.id)?.activity ?? [];
+    assert.ok(acts.some((a) => /retry 1\/2/.test(a.text)), "retried at least once with the cap shown");
+    assert.ok(acts.some((a) => /parked \(stuck\)/.test(a.text)), "logged the dead-letter");
+
+    // And it's not still spinning on the ready column.
+    const ready = await listTickets(root, { state: "ready" });
+    assert.equal(ready.length, 0, "no longer ready — stopped being retried");
+  } finally {
+    if (prevCmd === undefined) delete process.env.MYSTERON_AGENT_CMD;
+    else process.env.MYSTERON_AGENT_CMD = prevCmd;
+  }
 });
