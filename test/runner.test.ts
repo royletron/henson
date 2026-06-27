@@ -135,6 +135,64 @@ test("a local run is isolated in a worktree and its changes land on the current 
   }
 });
 
+test("a run that finished is left in place even if its output mentioned a limit", async () => {
+  // Ticket q18zz3xH: a finished ticket was bouncing back to Ready (and printing a
+  // second 'limit reached' summary) because limit detection tripped on the agent's
+  // output mentioning a limit — even when the run completed successfully.
+  const proj = path.join(tmp, "limit-done");
+  const { config } = await initProject(proj, { name: "LimitDone" });
+  const ticket = await createTicket(proj, { title: "Mentions a limit", state: "ready" });
+
+  const saved = process.env.MYSTERON_AGENT_CMD;
+  process.env.MYSTERON_AGENT_CMD = 'echo "note: usage limit reached earlier, but I finished"';
+  try {
+    const rm = new RunManager();
+    const run = await rm.start({ projectId: config.id, projectRoot: proj, config, ticket });
+    await waitFor(() => rm.get(run.id)?.status !== "running");
+    assert.equal(rm.get(run.id)?.status, "done");
+
+    // The run finished, so the ticket is NOT bounced back to Ready…
+    assert.notEqual((await getTicket(proj, ticket.id))?.state, "ready");
+    // …and no spurious 'moving the ticket back to Ready' summary was appended.
+    assert.ok(
+      !rm.get(run.id)!.lines.some((l) => /moving the ticket back to Ready/.test(l.text)),
+      "no second, contradictory limit summary on a finished run",
+    );
+  } finally {
+    if (saved !== undefined) process.env.MYSTERON_AGENT_CMD = saved;
+    else delete process.env.MYSTERON_AGENT_CMD;
+  }
+});
+
+test("limit detection ignores tool-result echoes (reading a ticket that mentions a limit)", async () => {
+  // The agent reading this very ticket — whose body says 'usage limit reached' —
+  // must not trip the limit flag. Such text arrives as a 'system' tool-result line.
+  const proj = path.join(tmp, "limit-echo");
+  const { config } = await initProject(proj, { name: "LimitEcho" });
+  const ticket = await createTicket(proj, { title: "Reads a limit", state: "ready" });
+
+  const savedCmd = process.env.MYSTERON_AGENT_CMD;
+  const savedFmt = process.env.MYSTERON_AGENT_FORMAT;
+  // Emit a Claude stream-json tool_result event echoing limit wording → rendered
+  // as a 'system' line, which must be excluded from limit detection.
+  process.env.MYSTERON_AGENT_FORMAT = "claude-stream-json";
+  process.env.MYSTERON_AGENT_CMD =
+    `echo '{"type":"user","message":{"content":[{"type":"tool_result","content":"ticket body: usage limit reached"}]}}'`;
+  try {
+    const rm = new RunManager();
+    const run = await rm.start({ projectId: config.id, projectRoot: proj, config, ticket });
+    await waitFor(() => rm.get(run.id)?.status !== "running");
+    assert.equal(rm.get(run.id)?.status, "done");
+    assert.ok(!rm.get(run.id)!.limitHit, "a tool-result echo must not set limitHit");
+    assert.notEqual((await getTicket(proj, ticket.id))?.state, "ready");
+  } finally {
+    if (savedCmd !== undefined) process.env.MYSTERON_AGENT_CMD = savedCmd;
+    else delete process.env.MYSTERON_AGENT_CMD;
+    if (savedFmt !== undefined) process.env.MYSTERON_AGENT_FORMAT = savedFmt;
+    else delete process.env.MYSTERON_AGENT_FORMAT;
+  }
+});
+
 test("renderStreamEvent turns Claude stream-json into readable lines", () => {
   // Session init.
   assert.match(

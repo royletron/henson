@@ -1033,8 +1033,14 @@ export class RunManager {
   }
 
   private append(run: Run, stream: RunLine["stream"], text: string): void {
-    if (!run.limitHit && LIMIT_HIT_RE.test(text)) run.limitHit = true;
-    if (!run.sessionError && SESSION_ERROR_RE.test(text)) run.sessionError = true;
+    // Only the agent's OWN output (stdout/stderr) signals it hit a limit or a bad
+    // session. "system" lines are either tool-result echoes (which repeat the
+    // ticket body — and a ticket about limits would otherwise trip this) or lines
+    // we injected ourselves, so scanning them produces false positives.
+    if (stream !== "system") {
+      if (!run.limitHit && LIMIT_HIT_RE.test(text)) run.limitHit = true;
+      if (!run.sessionError && SESSION_ERROR_RE.test(text)) run.sessionError = true;
+    }
     const line: RunLine = { stream, text, at: new Date().toISOString() };
     run.lines.push(line);
     if (run.lines.length > MAX_LINES) run.lines.splice(0, run.lines.length - MAX_LINES);
@@ -1084,9 +1090,11 @@ export class RunManager {
     // stop()/launch failures land here without landing — either way it's gone).
     void this.teardownIsolation(run.id, run.projectRoot);
 
-    // The agent hit a usage/spend/rate limit — it didn't finish, so put the
-    // ticket back on Ready to be retried once the limit resets.
-    if (run.limitHit && run.ticketId) {
+    // The agent hit a usage/spend/rate limit *before finishing* — put the ticket
+    // back on Ready to be retried once the limit resets. A run that completed
+    // ("done") got there, so it's left where it landed (review); bouncing it would
+    // both lose finished work and print a second, contradictory final summary.
+    if (run.limitHit && run.ticketId && status !== "done") {
       this.append(
         run,
         "system",
