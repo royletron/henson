@@ -386,10 +386,12 @@ test("buildPrompt embeds the recipe's git behaviour and team", () => {
   assert.match(solo, /do NOT create or switch branches/i);
   assert.ok(!solo.includes("# Team"), "solo has no team section");
 
-  // A multi-role recipe lists its roles for delegation.
+  // A multi-role recipe instructs the lead to spawn role sub-agents via the Agent tool.
   const team = buildPrompt(promptConfig("fullstack"), promptTicket, "", "");
   assert.match(team, /# Team \(Full-stack team\)/);
   assert.match(team, /- \*\*designer\*\*/);
+  assert.match(team, /Agent tool/i, "fullstack tells the lead to use the Agent tool for sub-agents");
+  assert.match(team, /Workflow:/i, "fullstack includes an explicit sub-agent workflow");
   assert.match(team, /do NOT create or switch branches/i, "fullstack still works on the current branch");
 
   // The research recipe opts into a throwaway branch instead.

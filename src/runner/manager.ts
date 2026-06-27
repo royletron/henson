@@ -393,8 +393,19 @@ export function buildPrompt(
       ? [
           ``,
           `# Team (${recipe.name})`,
-          `You may delegate to sub-agents in these roles; coordinate their work and own the final result:`,
+          `You are the **lead** of this team. Fan the work out to role sub-agents using Claude Code's built-in **Agent tool**, then synthesise their outputs into the final result. Do not attempt every role yourself.`,
+          ``,
+          `Roles:`,
           ...recipe.roles.map((r) => `- **${r.role}** — ${r.description}`),
+          ``,
+          `Workflow:`,
+          `1. Plan how to split the ticket across the roles above.`,
+          `2. Spawn each role as a separate \`Agent\` call (run independent roles in parallel; sequential when one depends on another). Pass each a focused sub-task description plus the ticket context.`,
+          `3. Review the combined changes and run any tests.`,
+          `4. If a reviewer role is present, spawn it last to check the final diff.`,
+          `5. Commit everything following the project etiquette.`,
+          ``,
+          `The sub-agents share your working directory and can read each other's changes.`,
         ]
       : [];
   const brief = companionSpec?.trim() ? [``, `# Your brief`, companionSpec.trim()] : [];
