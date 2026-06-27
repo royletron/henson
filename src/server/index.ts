@@ -8,7 +8,7 @@ import { bus, type RunEvent } from "../core/events.js";
 import { binStaleDone } from "../core/board.js";
 import { loadRegistry } from "../core/registry.js";
 import { RunManager } from "../runner/manager.js";
-import { Autopilot } from "../runner/autopilot.js";
+import { Autopilot, loadAutopilotIntent } from "../runner/autopilot.js";
 import { registerApi } from "./api.js";
 import { setupWebSocket } from "./ws.js";
 import { startRateLimitProxy, type RateLimitProxy } from "../plugins/usage-monitor/proxy.js";
@@ -79,6 +79,14 @@ export async function serve(opts: ServeOptions = {}): Promise<{ port: number; cl
   const stopGuestSpinner = startGuestSpinner(runs, verbose);
 
   const autopilot = new Autopilot(runs, workers);
+
+  // Auto-resume autopilot for projects that had it running before the last shutdown.
+  for (const p of registry.projects) {
+    if (await loadAutopilotIntent(p.path)) {
+      autopilot.start(p.id, p.path);
+      if (verbose) console.log(`[mysteron] resumed autopilot for ${p.name}`);
+    }
+  }
 
   // This machine's outbound offer (when it acts as a guest to another host).
   const guest = new GuestController();

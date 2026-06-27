@@ -46,5 +46,10 @@ export function companionsDir(projectRoot: string): string {
   return path.join(projectMysteronDir(projectRoot), "companions");
 }
 
+/** Persisted autopilot intent — whether autopilot was running when the server last stopped. */
+export function autopilotIntentPath(projectRoot: string): string {
+  return path.join(projectMysteronDir(projectRoot), "autopilot.json");
+}
+
 export const ETIQUETTE_DOC = "ETIQUETTE.md";
 export const SPEC_DOC = "SPEC.md";

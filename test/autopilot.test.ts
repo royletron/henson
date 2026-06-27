@@ -14,9 +14,9 @@ process.env.MYSTERON_AUTOPILOT_BUDGET_MS = "300";
 process.env.MYSTERON_AUTOPILOT_BREATHER_MS = "50";
 
 const { initProject, loadProjectConfig, saveProjectConfig } = await import("../src/core/project.js");
-const { createTicket, getTicket, listTickets } = await import("../src/core/board.js");
+const { createTicket, getTicket, listTickets, updateTicket } = await import("../src/core/board.js");
 const { RunManager } = await import("../src/runner/manager.js");
-const { Autopilot } = await import("../src/runner/autopilot.js");
+const { Autopilot, loadAutopilotIntent } = await import("../src/runner/autopilot.js");
 const { WorkerRegistry } = await import("../src/server/workers.js");
 
 const projectRoot = path.join(tmp, "proj");
@@ -88,6 +88,44 @@ test("autopilot never runs a guest-pinned companion on the local host", async ()
   const still = await listTickets(root, { state: "ready" });
   assert.equal(still.length, 1, "the ticket stays ready, waiting for its guest");
   assert.equal(still[0].id, ticket.id);
+});
+
+test("autopilot intent is persisted and loadAutopilotIntent reflects it", async () => {
+  const root = path.join(tmp, "persist");
+  await fs.mkdir(root, { recursive: true });
+  const { config } = await initProject(root, { name: "Persist" });
+
+  // Initially no intent file → false.
+  assert.equal(await loadAutopilotIntent(root), false);
+
+  const ap = new Autopilot(new RunManager(), new WorkerRegistry());
+  ap.start(config.id, root);
+  // Intent is written async; give it a moment.
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(await loadAutopilotIntent(root), true);
+
+  ap.stop(config.id);
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(await loadAutopilotIntent(root), false);
+});
+
+test("orphaned in-progress tickets are requeued to ready on autopilot start", async () => {
+  const root = path.join(tmp, "orphan");
+  await fs.mkdir(root, { recursive: true });
+  const { config } = await initProject(root, { name: "Orphan" });
+
+  // Simulate a ticket that was left in-progress by a previous server crash.
+  const orphan = await createTicket(root, { title: "Orphaned ticket", state: "in-progress" });
+
+  const ap = new Autopilot(new RunManager(), new WorkerRegistry());
+  ap.start(config.id, root);
+
+  // The orphan should be requeued to ready, then picked up by the loop.
+  await waitFor(() => ap.status(config.id)?.activity.some((a) => /requeued orphaned/.test(a.text)) ?? false);
+
+  const t = await getTicket(root, orphan.id);
+  assert.ok(t?.state === "ready" || t?.state === "done", "orphan was requeued (and may have run)");
+  ap.stop(config.id);
 });
 
 test("a ticket that keeps failing is retried then dead-lettered (capped + parked)", async () => {

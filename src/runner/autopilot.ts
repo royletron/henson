@@ -1,6 +1,8 @@
+import { promises as fs } from "node:fs";
 import { bus, type AutopilotStatus } from "../core/events.js";
 import { blockedTicketIds, getTicket, listTickets, updateTicket } from "../core/board.js";
 import { loadProjectConfig } from "../core/project.js";
+import { autopilotIntentPath } from "../core/paths.js";
 import { checkUsageBudget } from "./budget.js";
 import {
   DispatchQueue,
@@ -17,6 +19,24 @@ import type { WorkerRegistry } from "../server/workers.js";
 
 /** Label put on a ticket that's been dead-lettered, so it's visible on the board. */
 const STUCK_LABEL = "stuck";
+
+/** Read the persisted autopilot intent for a project (whether it was running). */
+export async function loadAutopilotIntent(projectRoot: string): Promise<boolean> {
+  try {
+    const raw = await fs.readFile(autopilotIntentPath(projectRoot), "utf8");
+    return (JSON.parse(raw) as { running?: boolean }).running === true;
+  } catch {
+    return false;
+  }
+}
+
+async function saveIntent(projectRoot: string, running: boolean): Promise<void> {
+  try {
+    await fs.writeFile(autopilotIntentPath(projectRoot), JSON.stringify({ running }) + "\n", "utf8");
+  } catch {
+    /* non-fatal — state is still correct in memory */
+  }
+}
 
 function envMs(name: string, fallback: number): number {
   const n = Number(process.env[name]);
@@ -89,6 +109,8 @@ export class Autopilot {
     };
     this.states.set(projectId, state);
     this.stopFlags.set(projectId, false);
+    void saveIntent(projectRoot, true);
+    void this.reconcileOrphans(projectId, projectRoot, state);
     this.set(state, "running", "Autopilot started.");
     void this.loop(state);
     return state;
@@ -98,8 +120,28 @@ export class Autopilot {
     const state = this.states.get(projectId);
     if (!state || state.status === "stopped") return false;
     this.stopFlags.set(projectId, true);
+    void saveIntent(state.projectRoot, false);
     this.set(state, "stopped", "Autopilot stopped.");
     return true;
+  }
+
+  /**
+   * Move any `in-progress` ticket that has no live run back to `ready` so the
+   * autopilot can pick it up again. Called on start so orphans left by a crash or
+   * server restart are reconciled immediately rather than sitting stranded.
+   */
+  private async reconcileOrphans(projectId: string, projectRoot: string, state: AutopilotState): Promise<void> {
+    try {
+      const inProgress = await listTickets(projectRoot, { state: "in-progress" });
+      for (const ticket of inProgress) {
+        if (!this.runs.activeForTicket(projectId, ticket.id)) {
+          await updateTicket(projectRoot, ticket.id, { state: "ready" });
+          this.addActivity(state, `↺ requeued orphaned ticket: ${ticket.title}`);
+        }
+      }
+    } catch {
+      /* non-fatal — autopilot loop will pick up ready tickets anyway */
+    }
   }
 
   private async loop(state: AutopilotState): Promise<void> {
