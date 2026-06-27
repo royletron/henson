@@ -272,6 +272,29 @@ test("buildPrompt embeds the recipe's git behaviour and team", () => {
   assert.ok(!buildPrompt(promptConfig(), promptTicket, "", "").includes("# Attached images"));
 });
 
+test("buildPrompt emits a short resume prompt that skips spec/etiquette/team/brief", () => {
+  const companion = { id: "c1", name: "Bo", role: "soloist", avatarSeed: "Bo" };
+  const brief = "# Commits\n\nBe fun";
+
+  const resumed = buildPrompt(promptConfig("fullstack"), promptTicket, "the spec", "always commit", companion as any, brief, true);
+  // Ticket details are still present.
+  assert.match(resumed, /# Ticket T1/);
+  assert.match(resumed, /# Git/);
+  assert.match(resumed, /continuing as Bo/);
+  // Heavy context is omitted — already in the session's context window.
+  assert.ok(!resumed.includes("the spec"), "spec omitted on resume");
+  assert.ok(!resumed.includes("always commit"), "etiquette omitted on resume");
+  assert.ok(!resumed.includes("# Team"), "team section omitted on resume");
+  assert.ok(!resumed.includes("# Your brief"), "brief omitted on resume");
+
+  // Full prompt (non-resume) still includes everything.
+  const full = buildPrompt(promptConfig("fullstack"), promptTicket, "the spec", "always commit", companion as any, brief, false);
+  assert.match(full, /the spec/);
+  assert.match(full, /always commit/);
+  assert.match(full, /# Team/);
+  assert.match(full, /# Your brief/);
+});
+
 test("buildPrompt tells the agent to bail when the ticket is already review-or-greater", () => {
   const p = buildPrompt(promptConfig(), promptTicket, "spec", "etiquette");
   // It must check the live state first and stop without touching anything.

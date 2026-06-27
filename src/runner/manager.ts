@@ -340,9 +340,38 @@ export function buildPrompt(
   etiquette: string,
   companion?: Companion,
   companionSpec?: string,
+  resume = false,
 ): string {
   const recipe = findRecipe(config.recipe ?? "solo") ?? findRecipe("solo")!;
   const comp = companion ?? defaultCompanion(config);
+  const images = ticket.attachments?.length
+    ? [
+        ``,
+        `# Attached images`,
+        `The reporter attached ${ticket.attachments.length} image(s) to this ticket. View each with the Read tool before starting — they show the problem or the desired result:`,
+        ...ticket.attachments.map((name) => `- .mysteron/board/attachments/${ticket.id}/${name}`),
+      ]
+    : [];
+
+  // On a resumed session the spec/etiquette/team/brief are already in the
+  // companion's context window — send only the new ticket to avoid re-paying
+  // those tokens on every run after the first.
+  if (resume) {
+    return [
+      `You are continuing as ${comp?.name ?? "the companion"} on the project "${config.name}".`,
+      `Work on the following ticket end-to-end, following the project etiquette. If a Mysteron MCP server is configured, use it to read docs/memory and to move this ticket to "review" when the work is complete and tests pass.`,
+      `First, read this ticket's current state via the Mysteron MCP. If it is already in "review", "done" or "bin", the work is finished — stop immediately and exit without making any changes.`,
+      ``,
+      `# Ticket ${ticket.id}: ${ticket.title}`,
+      ticket.body || "(no description)",
+      ...images,
+      ``,
+      `# Git`,
+      gitInstruction(resolveProjectGit(config)),
+      comp ? `When you commit, add a trailer line \`Mysteron-Companion: ${comp.name}\` so the work is attributed to you in Mysteron.` : "",
+    ].join("\n");
+  }
+
   const team =
     recipe.roles.length > 1
       ? [
@@ -353,14 +382,6 @@ export function buildPrompt(
         ]
       : [];
   const brief = companionSpec?.trim() ? [``, `# Your brief`, companionSpec.trim()] : [];
-  const images = ticket.attachments?.length
-    ? [
-        ``,
-        `# Attached images`,
-        `The reporter attached ${ticket.attachments.length} image(s) to this ticket. View each with the Read tool before starting — they show the problem or the desired result:`,
-        ...ticket.attachments.map((name) => `- .mysteron/board/attachments/${ticket.id}/${name}`),
-      ]
-    : [];
   return [
     `You are ${comp?.name ?? "the companion"} (role: ${comp?.role ?? "soloist"}), working on the project "${config.name}".`,
     `Work on the following ticket end-to-end, following the project etiquette. If a Mysteron MCP server is configured, use it to read docs/memory and to move this ticket to "review" when the work is complete and tests pass.`,
@@ -548,10 +569,10 @@ export class RunManager {
     const spec = (await readDoc(args.projectRoot, SPEC_DOC)) ?? "";
     const etiquette = (await readDoc(args.projectRoot, ETIQUETTE_DOC)) ?? "";
     const companionSpec = companion ? await readCompanionSpec(args.projectRoot, companion.id) : undefined;
-    const prompt = buildPrompt(args.config, args.ticket, spec, etiquette, companion, companionSpec ?? undefined);
     // If this companion has already run on this machine its Claude session
     // exists — resume it rather than trying to recreate the same session id.
     const resumeSession = companion ? this.companionHasLocalSession(companion.id) : false;
+    const prompt = buildPrompt(args.config, args.ticket, spec, etiquette, companion, companionSpec ?? undefined, resumeSession);
     const { cmd, args: cmdArgs, shell, display, format } = resolveCommand(
       args.config,
       args.projectRoot,
