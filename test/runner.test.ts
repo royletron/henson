@@ -462,6 +462,39 @@ test("buildPrompt emits a short resume prompt that skips spec/etiquette/team/bri
   assert.match(full, /# Your brief/);
 });
 
+test("buildPrompt asks for an up-front breakdown assessment, then resumes from an existing one", () => {
+  // No subtasks yet → the agent is asked to assess and (if big) plan + record progress.
+  const fresh = buildPrompt(promptConfig(), promptTicket, "spec", "etiquette");
+  assert.match(fresh, /# Subtasks/);
+  assert.match(fresh, /quick assessment/i);
+  assert.match(fresh, /plan_subtasks/);
+  assert.match(fresh, /complete_subtask/);
+  assert.match(fresh, /resumable/i);
+
+  // With subtasks → it lists their state and points at the first unfinished step.
+  const withSubtasks = {
+    ...promptTicket,
+    subtasks: [
+      { title: "scaffold", done: true },
+      { title: "wire it up", done: false },
+      { title: "tests", done: false },
+    ],
+  };
+  const resuming = buildPrompt(promptConfig(), withSubtasks as any, "spec", "etiquette");
+  assert.match(resuming, /# Subtasks \(resume here\)/);
+  assert.match(resuming, /- \[x\] scaffold/);
+  assert.match(resuming, /- \[ \] wire it up {2}← start here/);
+  assert.match(resuming, /- \[ \] tests$/m);
+  // The assessment text is gone once a breakdown exists.
+  assert.ok(!resuming.includes("quick assessment"), "no assessment once subtasks exist");
+
+  // The breakdown also rides along on a short resume-session prompt.
+  const companion = { id: "c1", name: "Bo", role: "soloist", avatarSeed: "Bo" };
+  const resumedSession = buildPrompt(promptConfig(), withSubtasks as any, "spec", "etiquette", companion as any, "", true);
+  assert.match(resumedSession, /# Subtasks \(resume here\)/);
+  assert.match(resumedSession, /← start here/);
+});
+
 test("buildPrompt tells the agent to bail when the ticket is already review-or-greater", () => {
   const p = buildPrompt(promptConfig(), promptTicket, "spec", "etiquette");
   // It must check the live state first and stop without touching anything.

@@ -7,6 +7,7 @@ import { atomicWrite, withFileLock } from "./io.js";
 import { unmergedBranchTicketIds } from "./git.js";
 import {
   TICKET_STATES,
+  type Subtask,
   type Ticket,
   type TicketPriority,
   type TicketState,
@@ -14,6 +15,16 @@ import {
 
 function now(): string {
   return new Date().toISOString();
+}
+
+/** Normalise whatever is stored under `subtasks` into clean Subtask records (drops junk). */
+function parseSubtasks(raw: unknown): Subtask[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const subtasks = raw
+    .map((s) => (s && typeof s === "object" ? (s as Record<string, unknown>) : {}))
+    .filter((s) => typeof s.title === "string" && (s.title as string).trim())
+    .map((s) => ({ title: (s.title as string).trim(), done: s.done === true }));
+  return subtasks.length ? subtasks : undefined;
 }
 
 function ticketPath(projectRoot: string, id: string): string {
@@ -57,6 +68,7 @@ function parseTicket(id: string, raw: string): Ticket {
     attachments: Array.isArray(data.attachments) ? (data.attachments as string[]) : undefined,
     blockedBy: Array.isArray(data.blockedBy) ? (data.blockedBy as string[]) : undefined,
     order: typeof data.order === "number" ? (data.order as number) : undefined,
+    subtasks: parseSubtasks(data.subtasks),
   };
 }
 
@@ -74,6 +86,7 @@ function serializeTicket(t: Ticket): string {
     ...(t.attachments?.length ? { attachments: t.attachments } : {}),
     ...(t.blockedBy?.length ? { blockedBy: t.blockedBy } : {}),
     ...(t.order != null ? { order: t.order } : {}),
+    ...(t.subtasks?.length ? { subtasks: t.subtasks } : {}),
   };
   return matter.stringify(`\n${t.body.trim()}\n`, fm);
 }
@@ -180,6 +193,56 @@ export function updateTicket(
   patch: Partial<Omit<Ticket, "id" | "created">>,
 ): Promise<Ticket | undefined> {
   return withFileLock(ticketPath(projectRoot, id), () => doUpdateTicket(projectRoot, id, patch));
+}
+
+// --- Subtasks ------------------------------------------------------------
+// A large ticket can be broken into an ordered list of small steps. Completed
+// steps persist on the ticket so a run that dies part-way resumes from the first
+// unfinished one rather than redoing everything. Mutations go through these two
+// helpers (not the generic update) so progress is recorded one step at a time and
+// can't be clobbered by a stale full-list write.
+
+/**
+ * Replace a ticket's subtask breakdown with an ordered list of step titles, all
+ * pending. Passing an empty list clears the breakdown. Re-planning preserves the
+ * done flag of any step whose title is unchanged, so a resumed run that re-plans
+ * doesn't lose the progress it already recorded.
+ */
+export function setSubtasks(
+  projectRoot: string,
+  id: string,
+  titles: string[],
+): Promise<Ticket | undefined> {
+  return withFileLock(ticketPath(projectRoot, id), async () => {
+    const existing = await getTicket(projectRoot, id);
+    if (!existing) return undefined;
+    const wasDone = new Set((existing.subtasks ?? []).filter((s) => s.done).map((s) => s.title));
+    const cleaned = titles.map((t) => t.trim()).filter(Boolean);
+    const subtasks: Subtask[] = cleaned.map((title) => ({ title, done: wasDone.has(title) }));
+    return doUpdateTicket(projectRoot, id, { subtasks: subtasks.length ? subtasks : undefined });
+  });
+}
+
+/**
+ * Mark a subtask done: the one matching `title` if given, otherwise the first
+ * still-pending step. Returns the updated ticket, or undefined if the ticket is
+ * missing or has no matching pending subtask.
+ */
+export function completeSubtask(
+  projectRoot: string,
+  id: string,
+  title?: string,
+): Promise<Ticket | undefined> {
+  return withFileLock(ticketPath(projectRoot, id), async () => {
+    const existing = await getTicket(projectRoot, id);
+    if (!existing?.subtasks?.length) return undefined;
+    const idx = title
+      ? existing.subtasks.findIndex((s) => s.title === title.trim() && !s.done)
+      : existing.subtasks.findIndex((s) => !s.done);
+    if (idx === -1) return undefined;
+    const subtasks = existing.subtasks.map((s, i) => (i === idx ? { ...s, done: true } : s));
+    return doUpdateTicket(projectRoot, id, { subtasks });
+  });
 }
 
 export async function deleteTicket(projectRoot: string, id: string): Promise<boolean> {

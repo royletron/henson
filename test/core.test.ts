@@ -11,7 +11,7 @@ process.env.CLAUDE_PROJECTS_DIR = path.join(tmp, "claude");
 
 const { initProject, loadProjectConfig } = await import("../src/core/project.js");
 const { resolvePlugins } = await import("../src/plugins/manager.js");
-const { createTicket, listTickets, nextTicket, nextTicketForCompanion, updateTicket, getTicket, deleteTicket, addAttachment, removeAttachment, readAttachment, binStaleDone, moveTicketsByState, reorderTickets, listTicketsEnriched, blockedTicketIds } = await import("../src/core/board.js");
+const { createTicket, listTickets, nextTicket, nextTicketForCompanion, updateTicket, getTicket, deleteTicket, addAttachment, removeAttachment, readAttachment, binStaleDone, moveTicketsByState, reorderTickets, listTicketsEnriched, blockedTicketIds, setSubtasks, completeSubtask } = await import("../src/core/board.js");
 const { readDoc, writeDoc } = await import("../src/core/docs.js");
 const { loadRegistry } = await import("../src/core/registry.js");
 const { usageInWindow } = await import("../src/plugins/usage-monitor/usage.js");
@@ -316,6 +316,49 @@ test("concurrent updateTicket calls on the same ticket all land", async () => {
   assert.equal(final?.state, "ready");
   assert.equal(final?.priority, "high");
   assert.deepEqual(final?.labels, ["important"]);
+});
+
+test("subtasks round-trip through frontmatter and complete one step at a time", async () => {
+  const root = path.join(tmp, "subtasks");
+  await fs.mkdir(root, { recursive: true });
+  const t = await createTicket(root, { title: "big one", state: "in-progress" });
+  assert.equal(t.subtasks, undefined);
+
+  const planned = await setSubtasks(root, t.id, ["  scaffold  ", "wire it up", "", "tests"]);
+  // Blank titles are dropped; all start pending.
+  assert.deepEqual(planned?.subtasks, [
+    { title: "scaffold", done: false },
+    { title: "wire it up", done: false },
+    { title: "tests", done: false },
+  ]);
+  // Persisted: a fresh read sees the same list.
+  assert.deepEqual((await getTicket(root, t.id))?.subtasks, planned?.subtasks);
+
+  // No title → the first pending step completes.
+  const afterFirst = await completeSubtask(root, t.id);
+  assert.deepEqual(afterFirst?.subtasks?.map((s) => s.done), [true, false, false]);
+  // By title → that exact step.
+  const afterTests = await completeSubtask(root, t.id, "tests");
+  assert.deepEqual(afterTests?.subtasks?.map((s) => s.done), [true, false, true]);
+
+  // Re-planning keeps the done flag of steps whose title is unchanged.
+  const replanned = await setSubtasks(root, t.id, ["scaffold", "wire it up", "tests", "docs"]);
+  assert.deepEqual(replanned?.subtasks, [
+    { title: "scaffold", done: true },
+    { title: "wire it up", done: false },
+    { title: "tests", done: true },
+    { title: "docs", done: false },
+  ]);
+
+  // Nothing pending matches → undefined, list untouched.
+  await completeSubtask(root, t.id, "wire it up");
+  await completeSubtask(root, t.id); // docs
+  assert.equal(await completeSubtask(root, t.id), undefined);
+  assert.ok((await getTicket(root, t.id))?.subtasks?.every((s) => s.done));
+
+  // Clearing drops the field entirely.
+  const cleared = await setSubtasks(root, t.id, []);
+  assert.equal(cleared?.subtasks, undefined);
 });
 
 test("docs round-trip with path-traversal guard", async () => {

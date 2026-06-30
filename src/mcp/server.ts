@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   TICKET_PRIORITIES,
   TICKET_STATES,
+  completeSubtask,
   createTicket,
   getTicket,
   listDocs,
@@ -12,6 +13,7 @@ import {
   nextTicket,
   readDoc,
   readMemory,
+  setSubtasks,
   updateTicket,
   writeDoc,
   writeMemory,
@@ -191,6 +193,39 @@ export async function buildMcpServer(
     async ({ claim, assignee }) => {
       const t = await nextTicket(projectRoot, { claim, assignee });
       return t ? json(t) : text("No tickets in 'ready'.");
+    },
+  );
+
+  // --- Subtasks -------------------------------------------------------------
+  server.registerTool(
+    "plan_subtasks",
+    {
+      description:
+        "Break a ticket into an ordered list of small, independently-committable steps. Do this at the start when a ticket is too big to finish in one go; work through the steps in order, committing and calling complete_subtask after each. Pass an empty list to clear the breakdown. Re-planning keeps the done flag of any step whose title is unchanged.",
+      inputSchema: {
+        id: z.string(),
+        subtasks: z.array(z.string()).describe("Ordered step titles, each a small discrete piece of work."),
+      },
+    },
+    async ({ id, subtasks }) => {
+      const t = await setSubtasks(projectRoot, id, subtasks);
+      return t ? json(t) : text(`Ticket not found: ${id}`);
+    },
+  );
+
+  server.registerTool(
+    "complete_subtask",
+    {
+      description:
+        "Mark a subtask done once its work is committed: the step matching `title` if given, otherwise the first still-pending step. Recording progress as you go is what lets a later run resume from the first unfinished step.",
+      inputSchema: {
+        id: z.string(),
+        title: z.string().optional().describe("Title of the step to complete; omit to complete the next pending one."),
+      },
+    },
+    async ({ id, title }) => {
+      const t = await completeSubtask(projectRoot, id, title);
+      return t ? json(t) : text(`No pending subtask to complete on ticket: ${id}`);
     },
   );
 

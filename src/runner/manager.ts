@@ -359,6 +359,36 @@ export function runResultStats(obj: unknown): { costUsd?: number; numTurns?: num
   };
 }
 
+/**
+ * The "# Subtasks" block of the prompt. When the ticket already has a breakdown,
+ * it lists the steps with their done/pending state and tells the agent to resume
+ * from the first unfinished one (redoing that step from scratch — its partial work
+ * may have been lost when the previous run died). When it doesn't, it asks the
+ * agent to assess up front whether the ticket is big enough to warrant breaking
+ * down, and how to record progress so the work stays resumable.
+ */
+function subtasksSection(ticket: Ticket): string[] {
+  if (ticket.subtasks?.length) {
+    const nextPending = ticket.subtasks.find((s) => !s.done)?.title;
+    return [
+      ``,
+      `# Subtasks (resume here)`,
+      `This ticket was already broken down. Completed steps are committed; continue from the first unfinished one and redo it from scratch — its partial work may not have survived the last run. Do the remaining steps strictly in order, committing each, and call \`mcp__mysteron__complete_subtask\` once a step's work is committed.`,
+      ...ticket.subtasks.map(
+        (s) => `- [${s.done ? "x" : " "}] ${s.title}${!s.done && s.title === nextPending ? "  ← start here" : ""}`,
+      ),
+    ];
+  }
+  return [
+    ``,
+    `# Subtasks`,
+    `Before you start, make a quick assessment: is this ticket large enough that it might not finish in one run (several files or independent steps, or likely to exhaust your budget)?`,
+    `- If it's small, just do it — no breakdown needed.`,
+    `- If it would benefit from breakdown, call \`mcp__mysteron__plan_subtasks\` with an ordered list of small, independently-committable steps that together deliver the whole ticket. Then work through them strictly in order: finish one step, commit it, and call \`mcp__mysteron__complete_subtask\` to record progress before moving to the next.`,
+    `Committing and recording each step as you go is what makes the ticket resumable — if your run dies, a later run picks up from the first unfinished step.`,
+  ];
+}
+
 /** Compose the agent prompt for a ticket, including the companion's recipe (team + git behaviour). Exported for testing. */
 export function buildPrompt(
   config: ProjectConfig,
@@ -380,6 +410,8 @@ export function buildPrompt(
       ]
     : [];
 
+  const subtasks = subtasksSection(ticket);
+
   // On a resumed session the spec/etiquette/team/brief are already in the
   // companion's context window — send only the new ticket to avoid re-paying
   // those tokens on every run after the first.
@@ -392,6 +424,7 @@ export function buildPrompt(
       `# Ticket ${ticket.id}: ${ticket.title}`,
       ticket.body || "(no description)",
       ...images,
+      ...subtasks,
       ``,
       `# Git`,
       gitInstruction(resolveProjectGit(config)),
@@ -429,6 +462,7 @@ export function buildPrompt(
     `# Ticket ${ticket.id}: ${ticket.title}`,
     ticket.body || "(no description)",
     ...images,
+    ...subtasks,
     ``,
     `# Git`,
     gitInstruction(resolveProjectGit(config)),

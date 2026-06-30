@@ -18,6 +18,17 @@ export const BOARD_STATES: TicketState[] = ["backlog", "ready", "in-progress", "
 export const TICKET_PRIORITIES = ["low", "medium", "high"] as const;
 export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
 
+/**
+ * One resumable step of a larger ticket. A ticket too big to finish in a single
+ * run is broken into an ordered list of these; each is meant to be small enough
+ * to complete and commit on its own, so a run that dies part-way can pick up from
+ * the first unfinished step rather than starting the whole ticket over.
+ */
+export interface Subtask {
+  title: string;
+  done: boolean;
+}
+
 export interface Ticket {
   id: string;
   title: string;
@@ -49,6 +60,13 @@ export interface Ticket {
    * queue. The inverse — tickets this one "blocks" — is computed on read.
    */
   blockedBy?: string[];
+  /**
+   * Ordered breakdown of the ticket into small, independently-committable steps.
+   * Absent for tickets small enough to do in one go; set by the agent when it
+   * assesses the ticket as large. Completed steps persist on the ticket (and so
+   * survive a dead run), which is what makes the work resumable.
+   */
+  subtasks?: Subtask[];
 }
 
 /**
