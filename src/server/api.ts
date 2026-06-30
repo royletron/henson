@@ -54,7 +54,7 @@ import { createWorkerMcp } from "./worker-mcp.js";
 import type { WorkerRegistry } from "./workers.js";
 import type { GuestController } from "./guest-controller.js";
 import { loadSettings, verifyGuestToken } from "../core/settings.js";
-import { workingTreeRef, listBranches, currentBranch, mergeBranch, deleteBranch, originStatus, pushCurrentBranch } from "../core/git.js";
+import { workingTreeRef, listBranches, currentBranch, mergeBranch, deleteBranch, originStatus, pushCurrentBranch, workingTreeStatus, commitWorkingTree } from "../core/git.js";
 
 interface ResolvedProject {
   entry: RegistryEntry;
@@ -330,6 +330,26 @@ export function registerApi(
         companionRef: commit.companion ? byName.get(commit.companion) : undefined,
       })),
     });
+  });
+
+  // Uncommitted working-tree changes, so the commits page can flag local work.
+  app.get("/api/projects/:id/working-tree", async (req: Request, res: Response) => {
+    const r = await resolve(req.params.id);
+    if (!r) return notFound(res);
+    res.json(await workingTreeStatus(r.entry.path));
+  });
+
+  // Stage and commit the host's uncommitted work straight from the UI.
+  app.post("/api/projects/:id/commit", async (req: Request, res: Response) => {
+    const r = await resolve(req.params.id);
+    if (!r) return notFound(res);
+    const { message, paths } = (req.body ?? {}) as { message?: string; paths?: string[] };
+    const result = await commitWorkingTree(r.entry.path, {
+      message: (message ?? "").toString(),
+      paths: Array.isArray(paths) ? paths.map((p) => p.toString()) : undefined,
+    });
+    if (!result.ok) return res.status(400).json(result);
+    res.json(result);
   });
 
   // Open branches (a PR-style review list) — guest runs land work here. Each

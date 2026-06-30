@@ -255,6 +255,27 @@ export interface BranchInfo {
   merged: boolean;
 }
 
+export interface WorkingTreeFile {
+  path: string;
+  index: string;
+  worktree: string;
+  staged: boolean;
+  untracked: boolean;
+}
+
+export interface WorkingTreeStatus {
+  branch: string;
+  clean: boolean;
+  files: WorkingTreeFile[];
+}
+
+export interface CommitResult {
+  ok: boolean;
+  committed: boolean;
+  commit?: string;
+  error?: string;
+}
+
 export interface OriginStatus {
   hasRemote: boolean;
   remote?: string;

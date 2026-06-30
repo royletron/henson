@@ -9,6 +9,7 @@ import {
   type BranchInfo,
   type Commit,
   type CommitMode,
+  type CommitResult,
   type Companion,
   type OriginStatus,
   type ProjectConfig,
@@ -19,6 +20,7 @@ import {
   type Ticket,
   type UsageBucket,
   type UsageBudget,
+  type WorkingTreeStatus,
 } from "./api";
 import { useAsync, useGlobalEvents } from "./hooks";
 import { Markdown } from "./Markdown";
@@ -761,6 +763,113 @@ export function CompanionTab({ detail }: { detail: ProjectDetail }) {
   );
 }
 
+// ---- Uncommitted work (status + commit straight from the UI) ------------
+/** A short, human label for a file's git status (untracked / modified / staged / deleted). */
+function fileStatusLabel(f: WorkingTreeStatus["files"][number]): { text: string; class: string } {
+  if (f.untracked) return { text: "new", class: "text-emerald-300" };
+  const code = f.index !== " " ? f.index : f.worktree;
+  const map: Record<string, { text: string; class: string }> = {
+    M: { text: "modified", class: "text-amber-300" },
+    A: { text: "added", class: "text-emerald-300" },
+    D: { text: "deleted", class: "text-rose-300" },
+    R: { text: "renamed", class: "text-cyan-300" },
+    C: { text: "copied", class: "text-cyan-300" },
+  };
+  return map[code] ?? { text: "changed", class: "text-zinc-300" };
+}
+
+function UncommittedCard({ projectId }: { projectId: string }) {
+  const { data, loading, reload } = useAsync(
+    () => api<WorkingTreeStatus>(`/api/projects/${projectId}/working-tree`),
+    [projectId],
+  );
+  const [message, setMessage] = useState("");
+  const [committing, setCommitting] = useState(false);
+
+  const files = data?.files ?? [];
+  const commit = async () => {
+    if (!message.trim()) return;
+    setCommitting(true);
+    try {
+      const res = await api<CommitResult>(`/api/projects/${projectId}/commit`, {
+        method: "POST",
+        body: JSON.stringify({ message }),
+      });
+      if (res.committed) {
+        pushToast(`Committed ${files.length} change${files.length === 1 ? "" : "s"}.`, "success");
+        setMessage("");
+      } else {
+        pushToast("Nothing to commit.", "info");
+      }
+      reload();
+    } catch (e) {
+      pushToast((e as Error).message, "warn");
+    } finally {
+      setCommitting(false);
+    }
+  };
+
+  return (
+    <div class="card mb-4">
+      <div class="flex items-center gap-2">
+        <h2 class="text-lg font-semibold">Uncommitted changes</h2>
+        {data && !data.clean && (
+          <span class="rounded-full bg-amber-900/60 px-2 py-0.5 text-xs font-medium text-amber-300 tabular-nums">
+            {files.length}
+          </span>
+        )}
+        <div class="flex-1" />
+        <button class="btn btn-sm" disabled={loading} title="Refresh" onClick={reload}>
+          ↻
+        </button>
+      </div>
+      {loading && !data ? (
+        <div class="pulse mt-2 text-sm text-zinc-500">Loading…</div>
+      ) : !data?.branch ? (
+        <div class="mt-2 text-sm text-zinc-500">Not on a branch (detached HEAD) — or this isn't a git repo.</div>
+      ) : data.clean ? (
+        <p class="mt-2 text-sm text-emerald-400">
+          Working tree clean ✓ — nothing uncommitted on <code>{data.branch}</code>.
+        </p>
+      ) : (
+        <>
+          <p class="mt-2 text-sm text-zinc-400">
+            Local work on <code>{data.branch}</code> that isn't committed yet. Write a message and commit it here.
+          </p>
+          <div class="mt-2 flex max-h-56 flex-col overflow-y-auto rounded-sm border border-zinc-800">
+            {files.map((f) => {
+              const label = fileStatusLabel(f);
+              return (
+                <div key={f.path} class="flex items-center gap-3 border-b border-zinc-800/60 px-2.5 py-1.5 text-sm last:border-0">
+                  <span class={`w-16 shrink-0 text-xs ${label.class}`}>{label.text}</span>
+                  <code class="flex-1 truncate" title={f.path}>
+                    {f.path}
+                  </code>
+                  {f.staged && <span class="shrink-0 text-xs text-zinc-500">staged</span>}
+                </div>
+              );
+            })}
+          </div>
+          <div class="mt-2 flex items-center gap-2">
+            <input
+              class="input flex-1"
+              placeholder="Commit message"
+              value={message}
+              disabled={committing}
+              onInput={(e) => setMessage((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => e.key === "Enter" && commit()}
+            />
+            <button class="btn btn-primary btn-sm shrink-0" disabled={committing || !message.trim()} onClick={commit}>
+              {committing ? "Committing…" : "Commit all"}
+            </button>
+          </div>
+          <p class="mt-2 text-xs text-zinc-600">Commits every change in the working tree under your git identity.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function CommitsTab({ detail }: { detail: ProjectDetail }) {
   const { data, loading } = useAsync(
     () => api<{ commits: Commit[] }>(`/api/projects/${detail.entry.id}/commits`),
@@ -768,7 +877,9 @@ export function CommitsTab({ detail }: { detail: ProjectDetail }) {
   );
   const commits = data?.commits ?? [];
   return (
-    <div class="card">
+    <div>
+      <UncommittedCard projectId={detail.entry.id} />
+      <div class="card">
       <h2 class="text-lg font-semibold">Commits</h2>
       <p class="text-sm text-zinc-400">
         Recent git history. Commits a companion made carry a <code>Mysteron-Companion</code> trailer and show their
@@ -800,6 +911,7 @@ export function CommitsTab({ detail }: { detail: ProjectDetail }) {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

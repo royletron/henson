@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { after, test } from "node:test";
 
 const exec = promisify(execFile);
-const { captureSnapshotRef, releaseSnapshotRef, landGuestPatch, listBranches, mergeBranch, deleteBranch, commitBoardChanges, unmergedBranchTicketIds, recentCommits, originStatus, pushCurrentBranch, isGitRepo, addRunWorktree, removeRunWorktree, worktreeRunPatch, lockfileChange, ticketBranchName, ensureTicketBranch, addTicketWorktree, removeTicketWorktree, commitTicketWork } =
+const { captureSnapshotRef, releaseSnapshotRef, landGuestPatch, listBranches, mergeBranch, deleteBranch, commitBoardChanges, unmergedBranchTicketIds, recentCommits, originStatus, pushCurrentBranch, isGitRepo, addRunWorktree, removeRunWorktree, worktreeRunPatch, lockfileChange, ticketBranchName, ensureTicketBranch, addTicketWorktree, removeTicketWorktree, commitTicketWork, workingTreeStatus, commitWorkingTree } =
   await import("../src/core/git.js");
 
 const roots: string[] = [];
@@ -616,4 +616,79 @@ test("commitTicketWork reports no advance when the run changed nothing", async (
   assert.equal(r.commits, 0);
   assert.equal(r.head, baseSha);
   await removeTicketWorktree(root, wt.dir);
+});
+
+// --- working-tree status + commit (commit straight from the UI) -------------
+
+test("workingTreeStatus is clean on a fresh checkout and lists changes otherwise", async () => {
+  const root = await makeRepo();
+  const clean = await workingTreeStatus(root);
+  assert.equal(clean.clean, true);
+  assert.equal(clean.files.length, 0);
+  assert.equal(clean.branch, (await git(root, "symbolic-ref", "--short", "HEAD")).stdout.trim());
+
+  await fs.writeFile(path.join(root, "a.txt"), "edited\n"); // tracked, unstaged
+  await fs.writeFile(path.join(root, "new.txt"), "brand new\n"); // untracked
+  await git(root, "add", "new.txt"); // stage the new file
+
+  const dirty = await workingTreeStatus(root);
+  assert.equal(dirty.clean, false);
+  const byPath = new Map(dirty.files.map((f) => [f.path, f]));
+  assert.equal(byPath.get("a.txt")?.staged, false);
+  assert.equal(byPath.get("a.txt")?.worktree, "M");
+  assert.equal(byPath.get("new.txt")?.staged, true);
+  assert.equal(byPath.get("new.txt")?.untracked, false); // staged → no longer "??"
+});
+
+test("workingTreeStatus returns clean for a non-git directory", async () => {
+  const plain = await fs.mkdtemp(path.join(os.tmpdir(), "mysteron-nogit-"));
+  roots.push(plain);
+  const s = await workingTreeStatus(plain);
+  assert.equal(s.clean, true);
+  assert.equal(s.files.length, 0);
+});
+
+test("commitWorkingTree stages and commits everything", async () => {
+  const root = await makeRepo();
+  await fs.writeFile(path.join(root, "a.txt"), "edited\n");
+  await fs.writeFile(path.join(root, "new.txt"), "brand new\n");
+
+  const res = await commitWorkingTree(root, { message: "feat: local work", trailer: "Mysteron-Companion: Waldorf" });
+  assert.equal(res.ok, true);
+  assert.equal(res.committed, true);
+  assert.equal((await git(root, "status", "--porcelain")).stdout.trim(), ""); // tree is clean now
+  assert.equal((await git(root, "log", "-1", "--pretty=%s")).stdout.trim(), "feat: local work");
+  assert.match((await git(root, "log", "-1", "--pretty=%b")).stdout, /Mysteron-Companion: Waldorf/);
+  assert.equal(await read(root, "new.txt"), "brand new\n");
+
+  assert.equal((await workingTreeStatus(root)).clean, true);
+});
+
+test("commitWorkingTree commits only the given paths", async () => {
+  const root = await makeRepo();
+  await fs.writeFile(path.join(root, "a.txt"), "edited\n");
+  await fs.writeFile(path.join(root, "keep.txt"), "leave me uncommitted\n");
+
+  const res = await commitWorkingTree(root, { message: "chore: just a", paths: ["a.txt"] });
+  assert.equal(res.committed, true);
+  assert.equal((await git(root, "show", "HEAD:a.txt")).stdout, "edited\n");
+  // keep.txt is still uncommitted (untracked).
+  const left = await workingTreeStatus(root);
+  assert.equal(left.clean, false);
+  assert.equal(left.files.some((f) => f.path === "keep.txt"), true);
+});
+
+test("commitWorkingTree reports nothing to commit on a clean tree", async () => {
+  const root = await makeRepo();
+  const res = await commitWorkingTree(root, { message: "nothing here" });
+  assert.equal(res.ok, true);
+  assert.equal(res.committed, false);
+});
+
+test("commitWorkingTree refuses an empty message and rejects flag-like paths", async () => {
+  const root = await makeRepo();
+  await fs.writeFile(path.join(root, "a.txt"), "edited\n");
+  assert.equal((await commitWorkingTree(root, { message: "   " })).ok, false);
+  assert.equal((await commitWorkingTree(root, { message: "ok", paths: ["--force"] })).ok, false);
+  assert.equal((await git(root, "log", "-1", "--pretty=%s")).stdout.trim(), "base"); // nothing committed
 });

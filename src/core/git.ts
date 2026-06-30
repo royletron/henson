@@ -584,6 +584,87 @@ export async function commitBoardChanges(
   }
 }
 
+/** One path in the working tree's `git status`, with its index/worktree state. */
+export interface WorkingTreeFile {
+  path: string;
+  /** Index (staged) status char from porcelain, e.g. `M`, `A`, `D`, `R`; ` ` when unstaged. */
+  index: string;
+  /** Worktree (unstaged) status char, e.g. `M`, `D`; ` ` when only staged. `?` for untracked. */
+  worktree: string;
+  /** True when the change is staged in the index. */
+  staged: boolean;
+  /** True for a brand-new, never-tracked file (`??`). */
+  untracked: boolean;
+}
+
+export interface WorkingTreeStatus {
+  /** The checked-out branch ("" if detached / not a repo). */
+  branch: string;
+  /** True when there is nothing uncommitted (no changes to add/commit). */
+  clean: boolean;
+  files: WorkingTreeFile[];
+}
+
+/**
+ * The host's uncommitted working-tree changes (tracked edits, staged files and
+ * brand-new untracked files), so the UI can show "you have N uncommitted
+ * changes" and offer to commit them. Returns a clean status for a non-git dir
+ * rather than throwing.
+ */
+export async function workingTreeStatus(root: string): Promise<WorkingTreeStatus> {
+  const branch = await currentBranch(root);
+  let porcelain: string;
+  try {
+    porcelain = (await exec("git", ["-C", root, "status", "--porcelain", "--untracked-files=all"], { maxBuffer: 16 << 20 })).stdout;
+  } catch {
+    return { branch, clean: true, files: [] };
+  }
+  const files: WorkingTreeFile[] = porcelain
+    .split("\n")
+    .map((l) => l.replace(/\r$/, ""))
+    .filter((l) => l.length > 3)
+    .map((l) => {
+      const index = l[0];
+      const worktree = l[1];
+      const untracked = l.startsWith("??");
+      const rest = l.slice(3);
+      const arrow = rest.indexOf(" -> ");
+      const p = (arrow >= 0 ? rest.slice(arrow + 4) : rest).replace(/^"(.*)"$/, "$1");
+      return { path: p, index, worktree, staged: !untracked && index !== " ", untracked };
+    });
+  return { branch, clean: files.length === 0, files };
+}
+
+/**
+ * Stage and commit the host's uncommitted work straight from the UI. Stages
+ * everything (tracked edits + untracked files) by default, or just `paths` when
+ * given, then commits with `message`. Uses the repo's own git identity (this is
+ * the user's commit, not Mysteron's) unless a `trailer` is supplied for
+ * attribution. Returns `committed: false` when there was nothing staged to commit.
+ */
+export async function commitWorkingTree(
+  root: string,
+  opts: { message: string; paths?: string[]; trailer?: string },
+): Promise<{ ok: boolean; committed: boolean; commit?: string; error?: string }> {
+  const message = (opts.message ?? "").trim();
+  if (!message) return { ok: false, committed: false, error: "a commit message is required" };
+  const paths = opts.paths?.filter((p) => p.trim());
+  if (paths?.some((p) => p.startsWith("-"))) return { ok: false, committed: false, error: "invalid path" };
+  const git = (args: string[]) => exec("git", ["-C", root, ...args], { maxBuffer: 64 << 20 });
+  const scope = paths?.length ? ["--", ...paths] : [];
+  try {
+    await git(["add", "-A", ...scope]);
+    const staged = (await git(["diff", "--cached", "--name-only", ...scope])).stdout.trim();
+    if (!staged) return { ok: true, committed: false };
+    const msg = opts.trailer ? `${message}\n\n${opts.trailer}` : message;
+    await git(["commit", "-q", "-m", msg, ...scope]);
+    const commit = (await git(["rev-parse", "HEAD"])).stdout.trim();
+    return { ok: true, committed: true, commit };
+  } catch (e) {
+    return { ok: false, committed: false, error: gitErrorText(e) };
+  }
+}
+
 export interface MergeResult {
   ok: boolean;
   /** The merge hit conflicts and was aborted — the working tree is left untouched. */
