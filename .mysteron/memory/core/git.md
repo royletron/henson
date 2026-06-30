@@ -5,17 +5,55 @@ metadata:
   type: project
 ---
 
-`src/core/git.ts` owns turning a run's diff into a host commit.
+`src/core/git.ts` owns turning a run's work into host commits. There are now **two**
+landing paths, chosen by the effective git strategy (`resolveProjectGit`):
 
-- `worktreeRunPatch(dir, baseSha)` flattens an isolated run worktree into a `{ patch, commitMessage }` against its base. Returns an **empty patch** when the run produced no net file changes.
-- `landGuestPatch(root, opts)` applies that patch in a throwaway worktree (`/tmp/mysteron-apply-<runId>`), commits it, then lands it per the project's git strategy (`current-branch` / `target-branch` / `new-branch`). The checkout is never touched directly; the raw patch is always saved to `.git/mysteron-patches/<runId>.diff` first so work is never lost.
+## Snapshot + diff (current-branch / target-branch modes, and all guest runs)
 
-**Gotcha — no-op patches (tickets gFxZ6GGD, gI7sD2zY).** A patch can be non-empty yet apply to *nothing*: a resumed run re-emits a diff whose changes are already present in the base, so `git apply --3way` is a clean no-op. `git commit` then fails with "nothing to commit", which used to surface as `mode: "failed"` ("could not apply the run's patch") — and the callers reset the ticket to **ready**, so a *finished* ticket bounced back to Ready (the bug in gI7sD2zY). Fix: after `git add -A`, `landGuestPatch` runs `git diff --cached --quiet`; if nothing is staged it cleans up the tmp worktree/branch and returns `mode: "noop"` (no commit, `ok: true`).
+- `captureSnapshotRef(root, runId)` pins the host's tracked+untracked tree as a
+  throwaway commit; the run is isolated off it and never sees prior history.
+- `worktreeRunPatch(dir, baseSha)` flattens an isolated run worktree into a
+  `{ patch, commitMessage }` against its base. Empty patch when nothing changed.
+- `landGuestPatch(root, opts)` applies that patch in a throwaway worktree
+  (`/tmp/mysteron-apply-<runId>`), commits it, then lands it per the project's git
+  strategy (`current-branch` / `target-branch` / `new-branch`). The checkout is
+  never touched directly; the raw patch is always saved to
+  `.git/mysteron-patches/<runId>.diff` first so work is never lost.
 
-Caller handling in `src/runner/manager.ts` differs by path because **guests have no board access**:
-- `landLocalRun`: `noop` → neither `applied` nor `landFailed`; leaves the ticket in whatever state the agent set via the Mysteron MCP (normally "review").
-- `applyGuestResult`: `noop` → treated as done → ticket goes to **review** (the work is already present; bouncing to ready would re-run forever, leaving it in-progress would strand it).
+**Gotcha — no-op patches (tickets gFxZ6GGD, gI7sD2zY).** A patch can be non-empty yet
+apply to *nothing* (a resumed run re-emits a diff already present in the base), so
+`git apply --3way` is a clean no-op. After `git add -A`, `landGuestPatch` runs
+`git diff --cached --quiet`; if nothing is staged it returns `mode: "noop"` (no
+commit, `ok: true`) rather than the old `mode: "failed"` that bounced a finished
+ticket back to Ready. Caller handling in `src/runner/manager.ts` differs by path
+because **guests have no board access**: `landLocalRun` leaves the agent's state on
+`noop`; `applyGuestResult` treats `noop` as done → review.
 
-The callers guard with `patch.trim()` before calling `landGuestPatch`, which only catches a *fully empty* patch — not the already-present case above. See [[runner/session-continuity]] for why resumes happen.
+## Ticket branch (per-ticket / new-branch mode, **local runs only** — ticket r4zbwCW8)
 
-**Note on snapshots:** the `noop` mode was documented here before it actually existed in `git.ts` (the `LandResult.mode` union was only `current-branch | branch | failed`). Trust the code over older memory — agent snapshots often lag the described fixes.
+The per-ticket path no longer snapshots-and-diffs. Instead the run accumulates on
+the ticket's own branch and resumes from it:
+
+- `ticketBranchName(prefix, ticketId)` → `<prefix><ticketId>` (default `mysteron/`),
+  the same name `landGuestPatch` uses for new-branch landings.
+- `ensureTicketBranch(root, branch, base?)` creates the branch up front at *dispatch*
+  time (idempotent — a re-run finds the existing branch untouched).
+- `addTicketWorktree(root, branch, runId)` checks the branch out in a per-run
+  worktree (`RunWorktree.ownsBranch = false`); the agent's commits land straight on
+  it. `removeTicketWorktree` drops the checkout but **keeps the branch**, so a dead
+  run's commits survive and the next run resumes from them.
+- `commitTicketWork(dir, baseSha, {message, trailer})` sweeps up anything left
+  uncommitted and reports how far the branch advanced — there's no diff to apply.
+
+Wiring lives in `src/runner/manager.ts`: `setUpIsolation` splits into
+`setUpTicketBranch` vs `setUpSnapshot`; `finalizeTicketBranchRun` replaces
+`landGuestPatch` for this path (commits>0 → ticket to review); `teardownIsolation`
+branches on `RunWorktree.ownsBranch` (keep ticket branch / delete throwaway). Design
+note: `docs/GIT-WORKFLOW.md`.
+
+**Still snapshot+diff:** guest (remote) runs in every mode. Host-as-origin live push
+(so guests commit onto the host branch too) is follow-up `zs0L7zRi`. Edge: a
+per-ticket ticket that runs locally (branch created) then on a guest still goes
+through `landGuestPatch`, which collides and makes `<prefix><id>-<runId>`; the
+follow-up removes that. See [[runner/isolation]], [[runner/session-continuity]],
+[[core/subtasks]].

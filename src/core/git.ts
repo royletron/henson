@@ -78,10 +78,12 @@ export async function isGitRepo(root: string): Promise<boolean> {
 export interface RunWorktree {
   /** The isolated checkout directory the agent runs in. */
   dir: string;
-  /** The throwaway branch the worktree is checked out on. */
+  /** The branch the worktree is checked out on (throwaway for snapshot runs, the shared ticket branch for ticket-branch runs). */
   branch: string;
-  /** The commit the worktree started at — the base the run's diff is taken against. */
+  /** The commit the worktree started at — the base the run's diff (or commit count) is taken against. */
   baseSha: string;
+  /** Whether this worktree owns its branch (a throwaway to delete on teardown) or shares it (a ticket branch to keep). */
+  ownsBranch: boolean;
 }
 
 /**
@@ -95,7 +97,7 @@ export async function addRunWorktree(root: string, ref: string, runId: string): 
   const branch = `mysteron/_run-${runId}`;
   await exec("git", ["-C", root, "worktree", "add", "-q", "-b", branch, dir, ref], { maxBuffer: 64 << 20 });
   const baseSha = (await exec("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
-  return { dir, branch, baseSha };
+  return { dir, branch, baseSha, ownsBranch: true };
 }
 
 /** Remove a run worktree and its throwaway branch (best-effort, idempotent). */
@@ -132,6 +134,91 @@ export async function worktreeRunPatch(
   }
   const patch = (await g(["diff", "--binary", baseSha, "HEAD"])).stdout;
   return { patch, commitMessage };
+}
+
+/**
+ * The dedicated branch name for a ticket under new-branch / per-ticket mode.
+ * Mirrors exactly how {@link landGuestPatch} names branches (`<prefix><ticketId>`,
+ * default prefix `mysteron/`), so a branch created up front by
+ * {@link ensureTicketBranch} is the same one the landing path would have made.
+ */
+export function ticketBranchName(prefix: string | undefined, ticketId: string): string {
+  const p = (prefix ?? "mysteron/").replace(/\/?$/, "/");
+  return `${p}${ticketId}`;
+}
+
+export interface EnsureBranchResult {
+  branch: string;
+  /** Whether the branch was created now (false when a prior run already made it). */
+  created: boolean;
+  /** The branch's tip after ensuring it — the base a run accumulates onto. */
+  baseSha: string;
+}
+
+/**
+ * Ensure a ticket's dedicated branch exists, creating it from `base` (default
+ * HEAD) when absent and leaving an existing one untouched. This moves branch
+ * creation to *dispatch* time (rather than land time) so a ticket's work
+ * accumulates on one stable branch across runs — and a re-run after a death finds
+ * the branch already there, with everything earlier runs committed. Idempotent.
+ */
+export async function ensureTicketBranch(
+  root: string,
+  branch: string,
+  base = "HEAD",
+): Promise<EnsureBranchResult> {
+  if (!isValidBranchName(branch)) throw new Error(`invalid branch name: ${branch}`);
+  const exists = await refExists(root, branch);
+  if (!exists) await exec("git", ["-C", root, "branch", branch, base]);
+  const baseSha = (await exec("git", ["-C", root, "rev-parse", branch])).stdout.trim();
+  return { branch, created: !exists, baseSha };
+}
+
+/**
+ * Create an isolated worktree checked out on an *existing* branch (e.g. a ticket
+ * branch from {@link ensureTicketBranch}), so a run commits straight onto that
+ * branch and the work accumulates there. Unlike {@link addRunWorktree} the
+ * worktree does not own a throwaway branch — it shares the ticket branch with the
+ * host repo — so {@link removeTicketWorktree} drops the checkout but keeps the
+ * branch for the next run to resume from.
+ */
+export async function addTicketWorktree(root: string, branch: string, runId: string): Promise<RunWorktree> {
+  if (!isValidBranchName(branch)) throw new Error(`invalid branch name: ${branch}`);
+  const dir = path.join(os.tmpdir(), `mysteron-run-${runId}`);
+  await exec("git", ["-C", root, "worktree", "add", "-q", dir, branch], { maxBuffer: 64 << 20 });
+  const baseSha = (await exec("git", ["-C", dir, "rev-parse", "HEAD"])).stdout.trim();
+  return { dir, branch, baseSha, ownsBranch: false };
+}
+
+/** Remove a ticket worktree's checkout but keep the (shared) ticket branch intact. */
+export async function removeTicketWorktree(root: string, dir: string): Promise<void> {
+  await exec("git", ["-C", root, "worktree", "remove", "--force", dir]).catch(() => undefined);
+}
+
+/**
+ * Commit anything a run left uncommitted in a ticket worktree so the ticket
+ * branch's tip carries the full result, and report whether the branch advanced
+ * past `baseSha` (its tip at dispatch). No diff is produced and nothing is applied
+ * elsewhere — the commits already live on the branch the worktree is checked out
+ * on, which is the whole point of the ticket-branch path. Returns the new tip and
+ * the number of commits added since dispatch.
+ */
+export async function commitTicketWork(
+  dir: string,
+  baseSha: string,
+  opts: { message: string; trailer?: string },
+): Promise<{ commits: number; head: string }> {
+  const g = (args: string[]) => exec("git", ["-C", dir, ...args], { maxBuffer: 256 << 20 });
+  const ident = ["-c", "user.name=Mysteron", "-c", "user.email=mysteron@local"];
+  await g(["add", "-A"]);
+  const pending = (await g(["diff", "--cached", "--name-only"])).stdout.trim();
+  if (pending) {
+    const msg = opts.trailer ? `${opts.message}\n\n${opts.trailer}` : opts.message;
+    await g([...ident, "commit", "-q", "-m", msg]);
+  }
+  const head = (await g(["rev-parse", "HEAD"])).stdout.trim();
+  const commits = Number((await g(["rev-list", "--count", `${baseSha}..HEAD`])).stdout.trim()) || 0;
+  return { commits, head };
 }
 
 /** Package managers we know how to install for in an isolated worktree. */

@@ -135,6 +135,63 @@ test("a local run is isolated in a worktree and its changes land on the current 
   }
 });
 
+test("a per-ticket run accumulates commits on the ticket branch and resumes there", async () => {
+  const proj = path.join(tmp, "perticket");
+  const { config } = await initProject(proj, { name: "PerTicket" });
+  config.commit = { mode: "per-ticket" }; // → new-branch strategy, branch mysteron/<id>
+  await exec("git", ["-C", proj, "init", "-q"]);
+  await exec("git", ["-C", proj, "config", "user.name", "Test"]);
+  await exec("git", ["-C", proj, "config", "user.email", "test@local"]);
+  await fs.writeFile(path.join(proj, "seed.txt"), "seed\n");
+  await exec("git", ["-C", proj, "add", "-A"]);
+  await exec("git", ["-C", proj, "commit", "-q", "-m", "base"]);
+  const onMain = (await exec("git", ["-C", proj, "rev-parse", "HEAD"])).stdout.trim();
+
+  const ticket = await createTicket(proj, { title: "Build on a branch", state: "ready" });
+  const branch = `mysteron/${ticket.id}`;
+  const show = (ref: string) => exec("git", ["-C", proj, "show", ref]).then((r) => r.stdout).catch(() => null);
+
+  const saved = process.env.MYSTERON_AGENT_CMD;
+  const rm = new RunManager();
+  try {
+    // Run 1: the agent writes a file (left uncommitted — commitTicketWork sweeps it up).
+    process.env.MYSTERON_AGENT_CMD = 'echo "step one" > step1.txt';
+    const run1 = await rm.start({ projectId: config.id, projectRoot: proj, config, ticket });
+    await waitFor(() => rm.get(run1.id)?.status !== "running", 15000);
+    assert.equal(rm.get(run1.id)?.status, "done");
+
+    // Work is on the ticket branch, not the checkout — main is untouched.
+    assert.equal(await show(`${branch}:step1.txt`), "step one\n");
+    assert.equal((await exec("git", ["-C", proj, "rev-parse", "HEAD"])).stdout.trim(), onMain);
+    assert.equal(await fs.access(path.join(proj, "step1.txt")).then(() => true, () => false), false);
+    assert.equal((await getTicket(proj, ticket.id))?.state, "review");
+    assert.equal(rm.get(run1.id)?.branch, branch);
+    assert.ok(rm.get(run1.id)?.lines.some((l) => l.text.includes(`created ticket branch ${branch}`)));
+
+    // Run 2 resumes the SAME branch: its worktree sees run 1's commit, and a new
+    // commit accumulates on top rather than starting over.
+    process.env.MYSTERON_AGENT_CMD = 'test -f step1.txt && echo "step two" > step2.txt';
+    const run2 = await rm.start({ projectId: config.id, projectRoot: proj, config, ticket });
+    await waitFor(() => rm.get(run2.id)?.status !== "running", 15000);
+    assert.equal(rm.get(run2.id)?.status, "done");
+    assert.equal(await show(`${branch}:step1.txt`), "step one\n"); // earlier work still there
+    assert.equal(await show(`${branch}:step2.txt`), "step two\n"); // and new work on top
+    assert.ok(rm.get(run2.id)?.lines.some((l) => l.text.includes(`resumed ticket branch ${branch}`)));
+
+    // The ticket branch survives (only the per-run checkout is torn down).
+    let cleaned = false;
+    for (let i = 0; i < 100 && !cleaned; i++) {
+      cleaned = !(await exec("git", ["-C", proj, "worktree", "list"])).stdout.includes("mysteron-run-");
+      if (!cleaned) await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.ok(cleaned, "the per-run checkout was cleaned up");
+    assert.equal((await exec("git", ["-C", proj, "branch", "--list", branch])).stdout.trim().replace(/^\*?\s*/, ""), branch);
+  } finally {
+    if (saved !== undefined) process.env.MYSTERON_AGENT_CMD = saved;
+    else delete process.env.MYSTERON_AGENT_CMD;
+  }
+});
+
 test("an isolated run with an unchanged lockfile symlinks the host's node_modules", async () => {
   const proj = path.join(tmp, "nm-link");
   const { config } = await initProject(proj, { name: "NmLink" });
