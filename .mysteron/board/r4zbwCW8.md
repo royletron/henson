@@ -1,14 +1,30 @@
 ---
 title: 'Git: ticket branches + host-as-origin for resumable remote work'
-state: ready
+state: review
 priority: medium
 createdBy: c1bf55fe-3e93-410d-94a7-cfde4dc1f80e
+assignee: Waldorf the Compiler
 labels:
   - v2
   - git
 created: '2026-06-30T12:53:27.168Z'
-updated: '2026-06-30T12:58:53.927Z'
+updated: '2026-06-30T13:16:43.816Z'
 order: 0
+subtasks:
+  - title: Write the git-workflow design note in docs/
+    done: true
+  - title: >-
+      Add ensureTicketBranch + existing-branch worktree helpers to core/git.ts
+      with tests
+    done: true
+  - title: >-
+      Wire local per-ticket runs to branch-per-ticket + resume in
+      runner/manager.ts with tests
+    done: true
+  - title: >-
+      Raise host-as-origin remote follow-up ticket, update core/git memory, move
+      ticket to review
+    done: true
 ---
 
 Follow-up from `9ai5-mfx` (Subtasking). That ticket delivered the resumable-subtask core (breakdown assessment + `plan_subtasks`/`complete_subtask` + resume-from-first-unfinished-step in the prompt). It deliberately left out the larger git-workflow rework the ticket also sketched, because it's a separate, substantial piece:
