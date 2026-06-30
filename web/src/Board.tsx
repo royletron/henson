@@ -253,7 +253,7 @@ function TicketCard({
       onDragOver={onDragOver}
       onDrop={onDrop}
       onClick={onEdit}
-      class={`mb-2.5 cursor-grab rounded-sm border border-zinc-800 bg-zinc-800/70 p-2.5 ${
+      class={`card-enter mb-2.5 cursor-grab rounded-sm border border-zinc-800 bg-zinc-800/70 p-2.5 ${
         running ? "card-running" : "hover:border-violet-500"
       } ${dragging ? "opacity-40" : ""} ${dropBefore ? "border-t-2 border-t-violet-500" : ""}`}
     >

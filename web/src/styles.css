@@ -153,6 +153,24 @@
   .card-running {
     animation: card-glow 1.8s ease-in-out infinite;
   }
+  /* A board card materialising — new tickets and cards that just moved column
+     pop in (scale + fade from a touch above). Runs once on mount. */
+  .card-enter {
+    animation: card-enter 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  /* A subtask row the instant it's ticked off on a live run: a brief spectral
+     wash sweeps the row so you see it land. */
+  .subtask-done {
+    animation: subtask-done 0.9s ease-out;
+  }
+  /* The check mark springing in when its subtask completes. */
+  .check-pop {
+    animation: check-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  /* A one-shot glow when the progress bar hits 100%. */
+  .bar-complete {
+    animation: bar-complete 0.9s ease-out;
+  }
 }
 
 @keyframes drawer-in {
@@ -210,12 +228,63 @@
   }
 }
 
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-7px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes subtask-done {
+  0% {
+    background-color: transparent;
+  }
+  25% {
+    background-color: rgba(0, 230, 118, 0.16);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes check-pop {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.28);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes bar-complete {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 230, 118, 0);
+  }
+  40% {
+    box-shadow: 0 0 10px 1px rgba(0, 230, 118, 0.7);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .live-dot::after,
   .pulse,
   .drawer,
   .logo-glow,
-  .card-running {
+  .card-running,
+  .card-enter,
+  .subtask-done,
+  .check-pop,
+  .bar-complete {
     animation: none;
   }
   /* Keep a static halo rather than a frozen mid-beat frame. */

@@ -1,4 +1,5 @@
 import type { ComponentChildren } from "preact";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { runElapsed, type RunStatus, type Subtask } from "./api";
 import { useNow } from "./hooks";
 import { CheckCircle2, Circle, ListChecks } from "lucide-preact";
@@ -122,13 +123,39 @@ export function SubtaskBadge({ subtasks }: { subtasks?: Subtask[] }) {
   );
 }
 
+/** Tracks which subtasks flipped from open → done since the last render, so we can
+ *  play the "just ticked off" animation only on the ones that actually changed.
+ *  Pre-completed subtasks on first render are seeded silently (no animation). */
+function useJustCompleted(subtasks?: Subtask[]): Set<number> {
+  const prev = useRef<boolean[] | null>(null);
+  const [justDone, setJustDone] = useState<Set<number>>(() => new Set());
+  useEffect(() => {
+    const cur = (subtasks ?? []).map((s) => s.done);
+    const before = prev.current;
+    prev.current = cur;
+    if (!before) return; // first render — seed without celebrating existing ticks
+    const newly = new Set<number>();
+    cur.forEach((done, i) => {
+      if (done && !before[i]) newly.add(i);
+    });
+    if (newly.size === 0) return;
+    setJustDone(newly);
+    const id = setTimeout(() => setJustDone(new Set()), 900);
+    return () => clearTimeout(id);
+  }, [subtasks]);
+  return justDone;
+}
+
 /** The ticket's subtask checklist with a progress bar — the resumable steps it's
- *  been broken into, with completed ones ticked. Renders nothing without a breakdown. */
+ *  been broken into, with completed ones ticked. Renders nothing without a breakdown.
+ *  On a live run, a step springs its tick and washes its row the moment it lands. */
 export function SubtaskList({ subtasks }: { subtasks?: Subtask[] }) {
+  const justDone = useJustCompleted(subtasks);
   const p = subtaskProgress(subtasks);
   if (!p || !subtasks) return null;
   const pct = Math.round((p.done / p.total) * 100);
   const complete = p.done === p.total;
+  const celebrate = complete && justDone.size > 0;
   return (
     <div>
       <div class="mb-1.5 flex items-center justify-between text-xs">
@@ -141,19 +168,21 @@ export function SubtaskList({ subtasks }: { subtasks?: Subtask[] }) {
       </div>
       <div class="mb-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
         <div
-          class={`h-full rounded-full transition-all ${complete ? "bg-emerald-500" : "bg-violet-500"}`}
+          class={`h-full rounded-full transition-all duration-500 ${complete ? "bg-emerald-500" : "bg-violet-500"} ${celebrate ? "bar-complete" : ""}`}
           style={{ width: `${pct}%` }}
         />
       </div>
       <ol class="flex flex-col gap-1 text-sm">
         {subtasks.map((s, i) => (
-          <li key={i} class="flex items-start gap-2">
+          <li key={i} class={`flex items-start gap-2 rounded px-1 ${justDone.has(i) ? "subtask-done" : ""}`}>
             {s.done ? (
-              <CheckCircle2 size={15} class="mt-0.5 shrink-0 text-emerald-400" />
+              <CheckCircle2 size={15} class={`mt-0.5 shrink-0 text-emerald-400 ${justDone.has(i) ? "check-pop" : ""}`} />
             ) : (
               <Circle size={15} class="mt-0.5 shrink-0 text-zinc-600" />
             )}
-            <span class={s.done ? "text-zinc-500 line-through" : "text-zinc-200"}>{s.title}</span>
+            <span class={`transition-colors duration-300 ${s.done ? "text-zinc-500 line-through" : "text-zinc-200"}`}>
+              {s.title}
+            </span>
           </li>
         ))}
       </ol>
