@@ -1,6 +1,6 @@
 ---
 title: 'v2: Unify dispatch behind one queue/scheduler abstraction'
-state: done
+state: bin
 priority: medium
 createdBy: c1bf55fe-3e93-410d-94a7-cfde4dc1f80e
 assignee: Waldorf the Compiler
@@ -9,7 +9,7 @@ labels:
   - tech-debt
   - needs-decision
 created: '2026-06-27T11:07:19.921Z'
-updated: '2026-06-27T12:06:20.786Z'
+updated: '2026-06-27T15:20:19.395Z'
 order: 1
 ---
 

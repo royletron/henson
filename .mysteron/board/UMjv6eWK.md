@@ -1,12 +1,12 @@
 ---
 title: Bug
-state: review
+state: bin
 priority: medium
 companionId: c1bf55fe-3e93-410d-94a7-cfde4dc1f80e
 assignee: Waldorf the Compiler
 labels: []
 created: '2026-06-27T13:58:14.414Z'
-updated: '2026-06-27T14:03:50.061Z'
+updated: '2026-06-27T15:20:16.833Z'
 ---
 
 Getting this a lot:

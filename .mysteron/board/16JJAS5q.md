@@ -1,12 +1,12 @@
 ---
 title: Mini Cost Stats
-state: review
+state: bin
 priority: medium
 companionId: c1bf55fe-3e93-410d-94a7-cfde4dc1f80e
 assignee: Waldorf the Compiler
 labels: []
 created: '2026-06-27T12:24:09.893Z'
-updated: '2026-06-27T12:33:04.018Z'
+updated: '2026-06-27T15:20:16.761Z'
 order: 0
 ---
 

@@ -1,6 +1,6 @@
 ---
 title: 'v2: Persist and auto-resume autopilot across server restarts'
-state: review
+state: bin
 priority: medium
 createdBy: c1bf55fe-3e93-410d-94a7-cfde4dc1f80e
 assignee: Waldorf the Compiler
@@ -8,7 +8,7 @@ labels:
   - v2
   - reliability
 created: '2026-06-27T11:07:44.989Z'
-updated: '2026-06-27T13:03:35.180Z'
+updated: '2026-06-27T15:20:16.798Z'
 order: 1
 ---
 

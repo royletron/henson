@@ -1,6 +1,6 @@
 ---
 title: 'Atomic, serialized writes for board/docs/memory'
-state: review
+state: bin
 priority: high
 assignee: Waldorf the Compiler
 labels:
@@ -8,7 +8,7 @@ labels:
   - reliability
   - v2
 created: '2026-06-25T19:06:01.084Z'
-updated: '2026-06-27T13:11:31.978Z'
+updated: '2026-06-27T15:20:16.807Z'
 order: 2
 ---
 

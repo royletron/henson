@@ -1,6 +1,6 @@
 ---
 title: Extensible plugin loading (beyond the hardcoded registry)
-state: review
+state: bin
 priority: low
 assignee: Waldorf the Compiler
 labels:
@@ -8,7 +8,7 @@ labels:
   - feature
   - v2
 created: '2026-06-25T19:06:01.347Z'
-updated: '2026-06-27T13:18:11.470Z'
+updated: '2026-06-27T15:20:16.822Z'
 order: 4
 ---
 

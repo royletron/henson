@@ -1,12 +1,12 @@
 ---
 title: Ticket madness
-state: done
+state: bin
 priority: medium
 companionId: c1bf55fe-3e93-410d-94a7-cfde4dc1f80e
 assignee: Waldorf the Compiler
 labels: []
 created: '2026-06-27T11:35:47.297Z'
-updated: '2026-06-27T11:46:38.838Z'
+updated: '2026-06-27T15:20:19.383Z'
 order: 0
 ---
 

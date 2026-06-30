@@ -1,6 +1,6 @@
 ---
 title: 'v2: Retry policy — attempt cap, backoff, and a dead-letter state'
-state: review
+state: bin
 priority: high
 createdBy: c1bf55fe-3e93-410d-94a7-cfde4dc1f80e
 assignee: Waldorf the Compiler
@@ -9,7 +9,7 @@ labels:
   - reliability
   - tech-debt
 created: '2026-06-27T11:07:36.685Z'
-updated: '2026-06-27T12:16:26.495Z'
+updated: '2026-06-27T15:20:16.828Z'
 ---
 
 **Reliability gap (raised by review `aX6J81M_`).** A ticket that keeps failing is retried forever with no cap and no backoff — a real hazard for the headline "leave it churning for days in yolo" use case.

@@ -1,6 +1,6 @@
 ---
 title: 'Recipe teams: delegate to real sub-agents'
-state: review
+state: bin
 priority: medium
 assignee: Waldorf the Compiler
 labels:
@@ -8,7 +8,7 @@ labels:
   - spec-gap
   - v2
 created: '2026-06-25T19:06:01.208Z'
-updated: '2026-06-27T13:14:20.088Z'
+updated: '2026-06-27T15:20:16.814Z'
 order: 3
 ---
 
