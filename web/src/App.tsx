@@ -56,11 +56,13 @@ function AppShell() {
   const route = useHashRoute();
   const [evt, setEvt] = useState<AppEvent>({ seq: 0 });
   const [ticketTitle, setTicketTitle] = useState<string>();
-  // The ticket live-view tab only needs its run stream, so it holds no global
-  // connection — keeps each tab to a single SSE socket (browsers cap ~6/origin).
+  // All live data (global board/autopilot events + per-run output) rides one
+  // multiplexed WebSocket, so the ticket page can subscribe globally too at no
+  // extra socket cost. It must: board-changed events are what let the ticket's
+  // subtask checklist and state refresh live as the agent works, instead of
+  // only on run-status changes (which would need a manual refresh otherwise).
   const connected = useGlobalEvents(
     (e) => setEvt((s) => ({ seq: s.seq + 1, projectId: e.projectId as string | undefined })),
-    route.name !== "ticket",
   );
 
   const { data } = useAsync(() => api<{ projects: ProjectListItem[] }>("/api/projects"), [evt.seq]);

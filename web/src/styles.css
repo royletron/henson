@@ -171,6 +171,10 @@
   .bar-complete {
     animation: bar-complete 0.9s ease-out;
   }
+  /* The spinner on the subtask the agent is working right now. */
+  .subtask-spin {
+    animation: subtask-spin 1s linear infinite;
+  }
 }
 
 @keyframes drawer-in {
@@ -275,6 +279,12 @@
   }
 }
 
+@keyframes subtask-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .live-dot::after,
   .pulse,
@@ -284,7 +294,8 @@
   .card-enter,
   .subtask-done,
   .check-pop,
-  .bar-complete {
+  .bar-complete,
+  .subtask-spin {
     animation: none;
   }
   /* Keep a static halo rather than a frozen mid-beat frame. */

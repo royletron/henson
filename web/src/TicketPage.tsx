@@ -331,7 +331,7 @@ export function TicketPage({
       ) : null}
       {ticket.subtasks?.length ? (
         <div class="mt-3 border-t border-zinc-800 pt-3">
-          <SubtaskList subtasks={ticket.subtasks} />
+          <SubtaskList subtasks={ticket.subtasks} active={Boolean(active)} />
         </div>
       ) : null}
       <label class="field-label">Description</label>

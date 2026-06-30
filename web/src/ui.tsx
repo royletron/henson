@@ -2,7 +2,7 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { runElapsed, type RunStatus, type Subtask } from "./api";
 import { useNow } from "./hooks";
-import { CheckCircle2, Circle, ListChecks } from "lucide-preact";
+import { CheckCircle2, Circle, ListChecks, Loader2 } from "lucide-preact";
 
 export function Modal({ children, onClose }: { children: ComponentChildren; onClose: () => void }) {
   return (
@@ -148,14 +148,18 @@ function useJustCompleted(subtasks?: Subtask[]): Set<number> {
 
 /** The ticket's subtask checklist with a progress bar — the resumable steps it's
  *  been broken into, with completed ones ticked. Renders nothing without a breakdown.
- *  On a live run, a step springs its tick and washes its row the moment it lands. */
-export function SubtaskList({ subtasks }: { subtasks?: Subtask[] }) {
+ *  On a live run, a step springs its tick and washes its row the moment it lands.
+ *  When `active` (a run is in flight) the first not-yet-done step is shown as
+ *  "running" — the agent works the breakdown strictly in order, so that's the one
+ *  it's on right now. */
+export function SubtaskList({ subtasks, active = false }: { subtasks?: Subtask[]; active?: boolean }) {
   const justDone = useJustCompleted(subtasks);
   const p = subtaskProgress(subtasks);
   if (!p || !subtasks) return null;
   const pct = Math.round((p.done / p.total) * 100);
   const complete = p.done === p.total;
   const celebrate = complete && justDone.size > 0;
+  const runningIdx = active && !complete ? subtasks.findIndex((s) => !s.done) : -1;
   return (
     <div>
       <div class="mb-1.5 flex items-center justify-between text-xs">
@@ -173,18 +177,28 @@ export function SubtaskList({ subtasks }: { subtasks?: Subtask[] }) {
         />
       </div>
       <ol class="flex flex-col gap-1 text-sm">
-        {subtasks.map((s, i) => (
-          <li key={i} class={`flex items-start gap-2 rounded px-1 ${justDone.has(i) ? "subtask-done" : ""}`}>
-            {s.done ? (
-              <CheckCircle2 size={15} class={`mt-0.5 shrink-0 text-emerald-400 ${justDone.has(i) ? "check-pop" : ""}`} />
-            ) : (
-              <Circle size={15} class="mt-0.5 shrink-0 text-zinc-600" />
-            )}
-            <span class={`transition-colors duration-300 ${s.done ? "text-zinc-500 line-through" : "text-zinc-200"}`}>
-              {s.title}
-            </span>
-          </li>
-        ))}
+        {subtasks.map((s, i) => {
+          const running = i === runningIdx;
+          return (
+            <li key={i} class={`flex items-start gap-2 rounded px-1 ${justDone.has(i) ? "subtask-done" : ""}`}>
+              {s.done ? (
+                <CheckCircle2 size={15} class={`mt-0.5 shrink-0 text-emerald-400 ${justDone.has(i) ? "check-pop" : ""}`} />
+              ) : running ? (
+                <Loader2 size={15} class="subtask-spin mt-0.5 shrink-0 text-violet-400" />
+              ) : (
+                <Circle size={15} class="mt-0.5 shrink-0 text-zinc-600" />
+              )}
+              <span
+                class={`transition-colors duration-300 ${
+                  s.done ? "text-zinc-500 line-through" : running ? "text-violet-200" : "text-zinc-200"
+                }`}
+              >
+                {s.title}
+                {running && <span class="ml-2 text-xs text-violet-400">running…</span>}
+              </span>
+            </li>
+          );
+        })}
       </ol>
     </div>
   );
