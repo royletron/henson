@@ -31,6 +31,15 @@ asks the agent to assess up front whether the ticket is too big for one run and,
 (resume here)" checklist marking the first unfinished step. Rendered in both the full and
 short-resume prompt branches.
 
+**Force-split** (ticket `nVZAKqqO`): `Ticket.forceSplit?: boolean` lets a human (or
+agent) demand a breakdown even on a small-looking ticket. Round-trips through
+frontmatter (serialized only when truthy; toggling off drops the key, so it never
+persists as `false`). Settable on `create_ticket`/`update_ticket` (MCP) and via a
+checkbox in the web `TicketPanel`. In `subtasksSection`, `forceSplit && no subtasks`
+emits a "# Subtasks (split required)" block that mandates `plan_subtasks` up front
+instead of the optional "quick assessment" framing. **No effect once subtasks exist** —
+the resume branch is checked first, so a flagged ticket mid-run still just resumes.
+
 **Not done here** — the larger git rework the ticket also sketched (branch-per-ticket,
 host-as-origin, push-as-you-go, resume from the host branch) is follow-up ticket
 `r4zbwCW8` (labels v2/git). The subtask layer is independent and works under today's

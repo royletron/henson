@@ -57,3 +57,31 @@ per-ticket ticket that runs locally (branch created) then on a guest still goes
 through `landGuestPatch`, which collides and makes `<prefix><id>-<runId>`; the
 follow-up removes that. See [[runner/isolation]], [[runner/session-continuity]],
 [[core/subtasks]].
+
+**Audit — do guest subtask commits reach the host? (ticket SRsAuOug).** No. A guest
+commits each subtask only inside its throwaway `/tmp/mysteron-guest-<runId>` repo;
+`handleDispatch` (`src/worker/guest.ts`) squashes them to one `git diff --binary`
+patch sent **once** in `run-done`, then `rm -rf`s the workdir. `applyGuestResult`
+lands that as a single commit *after* the run finishes. So a guest that dies
+mid-ticket loses all code — only the board's subtask `done` flags survive (written
+to the host's live MCP), so resume recovers the *plan*, not the *code*. This is the
+gap `zs0L7zRi` closes. Full write-up: `docs/SUBTASK-COMMIT-CONFIRMATION.md`.
+
+## Working-tree status + commit-from-UI (ticket rE9_qqHF)
+
+For the Commits page's "uncommitted work" feature:
+
+- `workingTreeStatus(root)` → `{ branch, clean, files[] }`. Parses
+  `git status --porcelain --untracked-files=all` into per-file `{ path, index,
+  worktree, staged, untracked }`. Returns a clean status (not a throw) for a non-git
+  dir. `clean` is just `files.length === 0`.
+- `commitWorkingTree(root, { message, paths?, trailer? })` stages all (or just
+  `paths`) and commits. Uses the **repo's own git identity** (this is the user's
+  commit, not Mysteron's) — no `-c user.name=Mysteron` override, unlike the landing
+  helpers. Refuses an empty message and rejects flag-like paths (`-`); returns
+  `committed: false` when nothing was staged. Path-scoped commits use a `-- paths`
+  pathspec on both the `add` and the `commit`.
+- API: `GET /api/projects/:id/working-tree` and `POST /api/projects/:id/commit`
+  (`{ message, paths? }`) in `src/server/api.ts`.
+- UI: `UncommittedCard` in `web/src/tabs.tsx`, rendered at the top of `CommitsTab`;
+  web types `WorkingTreeStatus` / `CommitResult` in `web/src/api.ts`.
