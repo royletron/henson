@@ -67,6 +67,13 @@ export interface Ticket {
    * survive a dead run), which is what makes the work resumable.
    */
   subtasks?: Subtask[];
+  /**
+   * When true, the agent is told it *must* break the ticket down with
+   * `plan_subtasks` before starting, overriding its own size assessment — for
+   * when we know a ticket should be sub-tasked even if it looks small. Has no
+   * effect once subtasks exist (the run is already resuming through them).
+   */
+  forceSplit?: boolean;
 }
 
 /**

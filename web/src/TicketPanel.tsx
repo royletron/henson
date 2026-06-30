@@ -53,6 +53,7 @@ export function TicketPanel({
   const [labels, setLabels] = useState((ticket?.labels ?? []).join(", "));
   const [companionId, setCompanionId] = useState(ticket?.companionId ?? "");
   const [blockedBy, setBlockedBy] = useState<string[]>(ticket?.blockedBy ?? []);
+  const [forceSplit, setForceSplit] = useState(ticket?.forceSplit ?? false);
   const [err, setErr] = useState("");
 
   const save = async () => {
@@ -68,6 +69,7 @@ export function TicketPanel({
       companionId: companionId || undefined,
       labels: labels.split(",").map((s) => s.trim()).filter(Boolean),
       blockedBy,
+      forceSplit,
     };
     try {
       if (isEdit && ticket) {
@@ -173,6 +175,21 @@ export function TicketPanel({
             blockedBy={blockedBy}
             onChange={setBlockedBy}
           />
+
+          <label class="mt-4 flex cursor-pointer items-start gap-2.5">
+            <input
+              type="checkbox"
+              class="mt-0.5"
+              checked={forceSplit}
+              onChange={(e) => setForceSplit((e.target as HTMLInputElement).checked)}
+            />
+            <span>
+              <span class="text-sm">Force split into subtasks</span>
+              <span class="block text-xs text-zinc-500">
+                Make the agent break this down with subtasks on run, even if it looks small.
+              </span>
+            </span>
+          </label>
 
           {isEdit && ticket?.subtasks?.length ? (
             <div class="mt-4">

@@ -149,6 +149,10 @@ export async function buildMcpServer(
           .array(z.string())
           .optional()
           .describe("Ids of tickets this one depends on; it waits in the queue until they're done and merged to main."),
+        forceSplit: z
+          .boolean()
+          .optional()
+          .describe("Force the ticket to be broken into subtasks on run, even if it looks small."),
       },
     },
     // Stamp the raising companion so the board can show who pushed the ticket.
@@ -159,7 +163,7 @@ export async function buildMcpServer(
     "update_ticket",
     {
       description:
-        "Update a ticket: change its state (e.g. move to in-progress/review/done), title, body, priority, assignee, labels or dependencies (blockedBy).",
+        "Update a ticket: change its state (e.g. move to in-progress/review/done), title, body, priority, assignee, labels, dependencies (blockedBy) or forceSplit.",
       inputSchema: {
         id: z.string(),
         state: z.enum(TICKET_STATES).optional(),
@@ -172,6 +176,10 @@ export async function buildMcpServer(
           .array(z.string())
           .optional()
           .describe("Ids of tickets this one depends on; it waits in the queue until they're done and merged to main. Pass [] to clear."),
+        forceSplit: z
+          .boolean()
+          .optional()
+          .describe("Force the ticket to be broken into subtasks on run, even if it looks small."),
       },
     },
     async ({ id, ...patch }) => {

@@ -552,6 +552,20 @@ test("buildPrompt asks for an up-front breakdown assessment, then resumes from a
   assert.match(resumedSession, /← start here/);
 });
 
+test("buildPrompt mandates a split when forceSplit is set, overriding the size assessment", () => {
+  const forced = buildPrompt(promptConfig(), { ...promptTicket, forceSplit: true } as any, "spec", "etiquette");
+  assert.match(forced, /# Subtasks \(split required\)/);
+  assert.match(forced, /plan_subtasks/);
+  assert.match(forced, /complete_subtask/);
+  // The optional "decide for yourself" framing is gone — the split is required.
+  assert.ok(!forced.includes("quick assessment"), "no assessment when split is forced");
+
+  // Once a breakdown exists the resume branch wins regardless of forceSplit.
+  const withSubtasks = { ...promptTicket, forceSplit: true, subtasks: [{ title: "step", done: false }] };
+  const resuming = buildPrompt(promptConfig(), withSubtasks as any, "spec", "etiquette");
+  assert.match(resuming, /# Subtasks \(resume here\)/);
+});
+
 test("buildPrompt tells the agent to bail when the ticket is already review-or-greater", () => {
   const p = buildPrompt(promptConfig(), promptTicket, "spec", "etiquette");
   // It must check the live state first and stop without touching anything.

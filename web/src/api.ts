@@ -51,6 +51,8 @@ export interface Ticket {
   blocked?: boolean;
   /** Ordered breakdown into small, independently-committable steps; absent for small tickets. */
   subtasks?: Subtask[];
+  /** When set, the agent is forced to break the ticket into subtasks on run. */
+  forceSplit?: boolean;
 }
 
 export interface Companion {

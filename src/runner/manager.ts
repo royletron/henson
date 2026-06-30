@@ -384,6 +384,14 @@ function subtasksSection(ticket: Ticket): string[] {
       ),
     ];
   }
+  if (ticket.forceSplit) {
+    return [
+      ``,
+      `# Subtasks (split required)`,
+      `This ticket has been flagged to be broken down — do this even if it looks small enough to do in one go. Before you start, call \`mcp__mysteron__plan_subtasks\` with an ordered list of small, independently-committable steps that together deliver the whole ticket. Then work through them strictly in order: finish one step, commit it, and call \`mcp__mysteron__complete_subtask\` to record progress before moving to the next.`,
+      `Committing and recording each step as you go is what makes the ticket resumable — if your run dies, a later run picks up from the first unfinished step.`,
+    ];
+  }
   return [
     ``,
     `# Subtasks`,

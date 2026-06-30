@@ -69,6 +69,7 @@ function parseTicket(id: string, raw: string): Ticket {
     blockedBy: Array.isArray(data.blockedBy) ? (data.blockedBy as string[]) : undefined,
     order: typeof data.order === "number" ? (data.order as number) : undefined,
     subtasks: parseSubtasks(data.subtasks),
+    forceSplit: data.forceSplit === true ? true : undefined,
   };
 }
 
@@ -87,6 +88,7 @@ function serializeTicket(t: Ticket): string {
     ...(t.blockedBy?.length ? { blockedBy: t.blockedBy } : {}),
     ...(t.order != null ? { order: t.order } : {}),
     ...(t.subtasks?.length ? { subtasks: t.subtasks } : {}),
+    ...(t.forceSplit ? { forceSplit: true } : {}),
   };
   return matter.stringify(`\n${t.body.trim()}\n`, fm);
 }
@@ -147,6 +149,7 @@ export async function createTicket(
     assignee?: string;
     labels?: string[];
     blockedBy?: string[];
+    forceSplit?: boolean;
   },
 ): Promise<Ticket> {
   await fs.mkdir(boardDir(projectRoot), { recursive: true });
@@ -164,6 +167,7 @@ export async function createTicket(
     updated: ts,
     body: input.body ?? "",
     blockedBy: input.blockedBy?.length ? input.blockedBy : undefined,
+    forceSplit: input.forceSplit ? true : undefined,
   };
   await atomicWrite(ticketPath(projectRoot, ticket.id), serializeTicket(ticket));
   return ticket;

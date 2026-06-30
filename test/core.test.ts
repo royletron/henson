@@ -361,6 +361,30 @@ test("subtasks round-trip through frontmatter and complete one step at a time", 
   assert.equal(cleared?.subtasks, undefined);
 });
 
+test("forceSplit round-trips through frontmatter and clears when unset", async () => {
+  const root = path.join(tmp, "force-split");
+  await fs.mkdir(root, { recursive: true });
+
+  // Absent by default.
+  const plain = await createTicket(root, { title: "small one" });
+  assert.equal(plain.forceSplit, undefined);
+
+  // Settable at creation and persisted.
+  const forced = await createTicket(root, { title: "split me", forceSplit: true });
+  assert.equal(forced.forceSplit, true);
+  assert.equal((await getTicket(root, forced.id))?.forceSplit, true);
+
+  // Toggled on via update.
+  const on = await updateTicket(root, plain.id, { forceSplit: true });
+  assert.equal(on?.forceSplit, true);
+  assert.equal((await getTicket(root, plain.id))?.forceSplit, true);
+
+  // Toggled off → the field drops out of storage entirely (not persisted as false).
+  const off = await updateTicket(root, plain.id, { forceSplit: false });
+  assert.ok(!off?.forceSplit);
+  assert.equal((await getTicket(root, plain.id))?.forceSplit, undefined);
+});
+
 test("docs round-trip with path-traversal guard", async () => {
   await writeDoc(projectRoot, "DESIGN", "# design\nbody");
   assert.match((await readDoc(projectRoot, "DESIGN.md")) ?? "", /# design/);
