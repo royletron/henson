@@ -7,6 +7,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import WebSocket from "ws";
 import type { DispatchMsg, GuestQuota, HostMsg } from "../core/worker-protocol.js";
+import { localWorkerVersion } from "../core/version.js";
 import { captureGuestQuota } from "../runner/budget.js";
 import { renderStreamEvent, runResultStats } from "../runner/manager.js";
 import { GuestTui } from "./guest-tui.js";
@@ -169,7 +170,9 @@ export class GuestConnection {
     const socket = new WebSocket(workerWsUrl(this.hostUrl));
     this.socket = socket;
 
-    socket.on("open", () => {
+    socket.on("open", async () => {
+      const { version, commitSha } = await localWorkerVersion();
+      if (socket.readyState !== WebSocket.OPEN) return;
       socket.send(
         JSON.stringify({
           t: "register",
@@ -177,6 +180,8 @@ export class GuestConnection {
           label: this.label,
           capacity: this.capacity,
           expiresInMs: this.deadline - Date.now(),
+          version,
+          commitSha,
         }),
       );
       this.heartbeat = setInterval(() => {

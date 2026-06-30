@@ -211,3 +211,14 @@ export function ErrorBox({ message }: { message: string }) {
 export function Avatar({ emoji, size = "text-3xl" }: { emoji: string; size?: string }) {
   return <div class={`${size} leading-none`}>{emoji}</div>;
 }
+
+/** The Mysteron build a guest worker is running: version + short commit sha. */
+export function WorkerVersion({ version, commitSha }: { version?: string; commitSha?: string }) {
+  if (!version && !commitSha) return null;
+  const label = [version && `v${version}`, commitSha].filter(Boolean).join(" · ");
+  return (
+    <span class="font-mono text-[11px] text-zinc-500" title="Mysteron build the guest is running">
+      {label}
+    </span>
+  );
+}

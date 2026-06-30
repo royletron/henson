@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useAsync, useGlobalEvents } from "./hooks";
 import { getWorkers, fmtWhen, type GuestQuota, type GuestWorker } from "./api";
-import { LiveDot, CloudGlyph } from "./ui";
+import { LiveDot, CloudGlyph, WorkerVersion } from "./ui";
 import { pushToast } from "./Toast";
 
 /**
@@ -77,6 +77,9 @@ export function GuestIndicator() {
                   <div class="flex-1" />
                   <span class="text-xs text-zinc-500">expires {fmtWhen(w.expiresAt)}</span>
                 </div>
+                {(w.version || w.commitSha) && (
+                  <WorkerVersion version={w.version} commitSha={w.commitSha} />
+                )}
                 {w.quota && <GuestQuotaBar quota={w.quota} />}
               </div>
             ))}

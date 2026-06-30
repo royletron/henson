@@ -41,7 +41,17 @@ test("a guest's quota message is stored on the worker and exposed via list()", a
   await new Promise<void>((resolve, reject) => {
     ws.on("error", reject);
     ws.on("open", () => {
-      ws.send(JSON.stringify({ t: "register", token, label: "macbook", capacity: 1, expiresInMs: 60_000 }));
+      ws.send(
+        JSON.stringify({
+          t: "register",
+          token,
+          label: "macbook",
+          capacity: 1,
+          expiresInMs: 60_000,
+          version: "0.1.0",
+          commitSha: "abc1234",
+        }),
+      );
     });
     ws.on("message", (raw) => {
       const msg = JSON.parse(raw.toString());
@@ -69,6 +79,8 @@ test("a guest's quota message is stored on the worker and exposed via list()", a
 
   assert.ok(worker, "expected a connected worker");
   assert.equal(worker.label, "macbook");
+  assert.equal(worker.version, "0.1.0");
+  assert.equal(worker.commitSha, "abc1234");
   assert.ok(worker.quota, "expected the quota to be stored");
   assert.equal(worker.quota.percentUsed, 88);
   assert.equal(worker.quota.safeToContinue, false);

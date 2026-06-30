@@ -25,6 +25,10 @@ export interface Worker {
   status: "idle" | "busy";
   /** The guest's latest Claude allowance, captured the same way the host captures its own. */
   quota?: GuestQuota;
+  /** Mysteron version the guest is running (from its package.json). */
+  version?: string;
+  /** Short git sha of the guest's Mysteron checkout (absent for a packed install). */
+  commitSha?: string;
 }
 
 const MAX_OFFER_MS = 24 * 60 * 60 * 1000; // cap an offer at a day
@@ -145,6 +149,8 @@ export class WorkerRegistry {
             lastSeen: now.toISOString(),
             expiresAt,
             status: "idle",
+            version: msg.version,
+            commitSha: msg.commitSha,
           });
           this.send(socket, { t: "registered", workerId: id, hostLabel: hostLabel(), expiresAt });
           if (verbose) console.log(`[mysteron] guest joined: ${msg.label} (${id}), expires ${expiresAt}`);

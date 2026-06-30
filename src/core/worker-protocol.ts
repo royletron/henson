@@ -17,6 +17,10 @@ export interface RegisterMsg {
   capacity: number;
   /** Auto-expire the offer this many ms after connecting. */
   expiresInMs: number;
+  /** Mysteron version this guest is running (from its package.json), so the host can spot stale guests. */
+  version?: string;
+  /** Short git sha of the guest's Mysteron checkout (absent for a packed install). */
+  commitSha?: string;
 }
 
 export interface HeartbeatMsg {

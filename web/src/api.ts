@@ -394,6 +394,10 @@ export interface GuestWorker {
   status: "idle" | "busy";
   /** The guest's current Claude allowance, captured like the host captures its own. */
   quota?: GuestQuota;
+  /** Mysteron version the guest is running. */
+  version?: string;
+  /** Short git sha of the guest's Mysteron checkout. */
+  commitSha?: string;
 }
 
 export const getWorkers = () => api<{ workers: GuestWorker[] }>("/api/workers");

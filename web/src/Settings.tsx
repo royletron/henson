@@ -16,7 +16,7 @@ import {
   stopGuestOffer,
   type TicketState,
 } from "./api";
-import { LiveDot } from "./ui";
+import { LiveDot, WorkerVersion } from "./ui";
 
 const BOARD_ORDER: TicketState[] = ["backlog", "ready", "in-progress", "review", "done"];
 
@@ -355,6 +355,7 @@ function GuestWorkers() {
                   {w.label}
                 </span>
                 <span class="text-xs text-zinc-500">×{w.capacity}</span>
+                <WorkerVersion version={w.version} commitSha={w.commitSha} />
                 <div class="flex-1" />
                 <span class="text-xs text-zinc-500">expires {fmtWhen(w.expiresAt)}</span>
               </div>
