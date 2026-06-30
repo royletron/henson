@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { after, test } from "node:test";
 
 const exec = promisify(execFile);
-const { captureSnapshotRef, releaseSnapshotRef, landGuestPatch, listBranches, mergeBranch, deleteBranch, commitBoardChanges, unmergedBranchTicketIds, recentCommits, originStatus, pushCurrentBranch, isGitRepo, addRunWorktree, removeRunWorktree, worktreeRunPatch, lockfileChange } =
+const { captureSnapshotRef, releaseSnapshotRef, landGuestPatch, listBranches, mergeBranch, deleteBranch, commitBoardChanges, unmergedBranchTicketIds, recentCommits, originStatus, pushCurrentBranch, isGitRepo, addRunWorktree, removeRunWorktree, worktreeRunPatch, lockfileChange, ticketBranchName, ensureTicketBranch, addTicketWorktree, removeTicketWorktree, commitTicketWork } =
   await import("../src/core/git.js");
 
 const roots: string[] = [];
@@ -539,4 +539,81 @@ test("lockfileChange spots a brand-new (untracked) lockfile and prefers pnpm", a
   await fs.writeFile(path.join(root, "package-lock.json"), "{}\n");
   await fs.writeFile(path.join(root, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
   assert.deepEqual(await lockfileChange(root), { file: "pnpm-lock.yaml", manager: "pnpm" });
+});
+
+// --- ticket branches (resumable per-ticket work) ---------------------------
+
+test("ticketBranchName mirrors landGuestPatch's <prefix><ticketId> naming", () => {
+  assert.equal(ticketBranchName(undefined, "abc"), "mysteron/abc");
+  assert.equal(ticketBranchName("mysteron/", "abc"), "mysteron/abc");
+  assert.equal(ticketBranchName("spike", "abc"), "spike/abc"); // trailing slash normalised
+  assert.equal(ticketBranchName("feat/", "t1"), "feat/t1");
+});
+
+test("ensureTicketBranch creates the branch up front and is idempotent", async () => {
+  const root = await makeRepo();
+  const branch = ticketBranchName("mysteron/", "tA");
+
+  const first = await ensureTicketBranch(root, branch);
+  assert.equal(first.created, true);
+  assert.equal(first.branch, branch);
+  assert.equal(await refExists(root, branch), true);
+
+  // A later run finds it already there and leaves its tip alone.
+  await fs.writeFile(path.join(root, "a.txt"), "moved on\n");
+  await git(root, "commit", "-aqm", "host moved on");
+  const second = await ensureTicketBranch(root, branch);
+  assert.equal(second.created, false);
+  assert.equal(second.baseSha, first.baseSha); // existing branch untouched, not re-pointed at HEAD
+});
+
+test("ensureTicketBranch rejects an invalid branch name", async () => {
+  const root = await makeRepo();
+  await assert.rejects(() => ensureTicketBranch(root, "-bad name"), /invalid branch name/);
+});
+
+test("addTicketWorktree accumulates commits on the ticket branch and resumes across runs", async () => {
+  const root = await makeRepo();
+  const branch = ticketBranchName("mysteron/", "tB");
+  const { baseSha } = await ensureTicketBranch(root, branch);
+
+  // Run 1: the agent commits its own work onto the ticket branch in a worktree.
+  const wt1 = await addTicketWorktree(root, branch, "run1");
+  await fs.writeFile(path.join(wt1.dir, "step1.txt"), "step one\n");
+  await git(wt1.dir, "add", "-A");
+  await git(wt1.dir, "commit", "-qm", "step 1");
+  // ...and leaves a little uncommitted, which commitTicketWork sweeps up.
+  await fs.writeFile(path.join(wt1.dir, "leftover.txt"), "tail\n");
+  const r1 = await commitTicketWork(wt1.dir, baseSha, { message: "wrap up", trailer: "Mysteron-Companion: Waldorf" });
+  assert.equal(r1.commits, 2); // the agent's commit + the swept leftover
+  await removeTicketWorktree(root, wt1.dir);
+
+  // The branch still exists after teardown (only the checkout was removed).
+  assert.equal(await refExists(root, branch), true);
+  // Its tip carries both commits, including the attribution trailer on the sweep.
+  assert.match((await git(root, "log", "-1", "--format=%B", branch)).stdout, /Mysteron-Companion: Waldorf/);
+
+  // Run 2 (a resume) checks the same branch out fresh and sees run 1's work.
+  const wt2 = await addTicketWorktree(root, branch, "run2");
+  assert.equal(await read(wt2.dir, "step1.txt"), "step one\n"); // prior commit is present
+  assert.equal(await read(wt2.dir, "leftover.txt"), "tail\n");
+  await fs.writeFile(path.join(wt2.dir, "step2.txt"), "step two\n");
+  const r2 = await commitTicketWork(wt2.dir, wt2.baseSha, { message: "step 2" });
+  assert.equal(r2.commits, 1); // only the new commit since this run's dispatch base
+  await removeTicketWorktree(root, wt2.dir);
+
+  // The ticket branch now holds the whole accumulated result.
+  assert.equal((await git(root, "show", `${branch}:step2.txt`)).stdout, "step two\n");
+  assert.equal((await git(root, "rev-list", "--count", branch)).stdout.trim(), "4"); // base + 3 commits
+});
+
+test("commitTicketWork reports no advance when the run changed nothing", async () => {
+  const root = await makeRepo();
+  const branch = ticketBranchName(undefined, "tC");
+  const { baseSha } = await ensureTicketBranch(root, branch);
+  const wt = await addTicketWorktree(root, branch, "run3");
+  const r = await commitTicketWork(wt.dir, baseSha, { message: "nothing" });
+  assert.equal(r.commits, 0);
+  assert.equal(r.head, baseSha);
+  await removeTicketWorktree(root, wt.dir);
 });

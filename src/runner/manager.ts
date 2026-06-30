@@ -8,16 +8,21 @@ import { bus, type RunLine } from "../core/events.js";
 import { updateTicket } from "../core/board.js";
 import { recordRunCost } from "../core/costs.js";
 import { readDoc } from "../core/docs.js";
-import { findRecipe, gitInstruction, resolveProjectGit } from "../core/recipes.js";
+import { findRecipe, gitInstruction, resolveProjectGit, type EffectiveGit } from "../core/recipes.js";
 import { loadProjectConfig } from "../core/project.js";
 import {
   addRunWorktree,
+  addTicketWorktree,
   captureSnapshotRef,
+  commitTicketWork,
+  ensureTicketBranch,
   isGitRepo,
   landGuestPatch,
   lockfileChange,
   releaseSnapshotRef,
   removeRunWorktree,
+  removeTicketWorktree,
+  ticketBranchName,
   worktreeRunPatch,
   type PackageManager,
   type RunWorktree,
@@ -682,11 +687,14 @@ export class RunManager {
     bus.emitEvent({ type: "board-changed", projectId: run.projectId, detail: run.ticketId });
     this.append(run, "system", `▶ ${display}`);
 
-    // Isolate the run in its own worktree off a snapshot of the project, so
-    // parallel companions don't see or commit each other's half-finished work.
-    // The result is landed via landGuestPatch — the same strategy-aware path
-    // guests use. Falls back to running in place when this isn't a git repo.
-    const workdir = await this.setUpIsolation(run, args.projectRoot);
+    // Isolate the run in its own worktree. Under per-ticket (new-branch) mode the
+    // worktree is checked out on the ticket's own branch so work accumulates there
+    // and a re-run resumes from prior commits; otherwise it's an off-a-snapshot
+    // worktree landed via landGuestPatch (the same strategy-aware path guests use),
+    // so parallel companions don't see each other's half-finished work. Falls back
+    // to running in place when this isn't a git repo.
+    const git = resolveProjectGit(args.config);
+    const workdir = await this.setUpIsolation(run, args.projectRoot, git);
     this.append(run, "system", `cwd: ${workdir}`);
     void this.persist(run); // initial record, so even a crashed run leaves history
 
@@ -760,18 +768,24 @@ export class RunManager {
 
   /**
    * Prepare an isolated worktree for a local run and return the directory to run
-   * the agent in. When the project is a git repo, snapshots the working tree and
-   * checks it out in a per-run worktree (with the host's node_modules symlinked
-   * in). Any failure falls back to running directly in the project root.
+   * the agent in. When the project is a git repo:
+   *  - per-ticket (new-branch) mode → check out the ticket's own branch (created
+   *    up front, accumulated across runs), so the agent's commits land straight on
+   *    it and a re-run resumes from what earlier runs committed.
+   *  - otherwise → snapshot the working tree into a per-run worktree, landed later
+   *    via landGuestPatch.
+   * Either way the host's node_modules are provisioned in. Any failure falls back
+   * to running directly in the project root.
    */
-  private async setUpIsolation(run: Run, projectRoot: string): Promise<string> {
+  private async setUpIsolation(run: Run, projectRoot: string, git: EffectiveGit): Promise<string> {
     if (!(await isGitRepo(projectRoot))) return projectRoot;
     try {
-      const baseRef = await captureSnapshotRef(projectRoot, run.id);
-      const wt = await addRunWorktree(projectRoot, baseRef, run.id);
+      const wt =
+        git.strategy === "new-branch"
+          ? await this.setUpTicketBranch(run, projectRoot, git)
+          : await this.setUpSnapshot(run, projectRoot);
       this.isolation.set(run.id, wt);
       await this.prepareNodeModules(run, projectRoot, wt.dir);
-      this.append(run, "system", "⎇ isolated in a worktree off a snapshot of the project");
       return wt.dir;
     } catch (e) {
       this.isolation.delete(run.id);
@@ -779,6 +793,29 @@ export class RunManager {
       this.append(run, "system", `⚠ couldn't isolate the run (${(e as Error).message}); running in place`);
       return projectRoot;
     }
+  }
+
+  /** Isolation for per-ticket mode: a worktree checked out on the ticket branch. */
+  private async setUpTicketBranch(run: Run, projectRoot: string, git: EffectiveGit): Promise<RunWorktree> {
+    const branch = ticketBranchName(git.branchPrefix, run.ticketId);
+    const ensured = await ensureTicketBranch(projectRoot, branch);
+    const wt = await addTicketWorktree(projectRoot, branch, run.id);
+    this.append(
+      run,
+      "system",
+      ensured.created
+        ? `⎇ created ticket branch ${branch} and isolated the run on it`
+        : `⎇ resumed ticket branch ${branch} (continuing earlier work)`,
+    );
+    return wt;
+  }
+
+  /** Isolation for current-branch / target-branch modes: a worktree off a working-tree snapshot. */
+  private async setUpSnapshot(run: Run, projectRoot: string): Promise<RunWorktree> {
+    const baseRef = await captureSnapshotRef(projectRoot, run.id);
+    const wt = await addRunWorktree(projectRoot, baseRef, run.id);
+    this.append(run, "system", "⎇ isolated in a worktree off a snapshot of the project");
+    return wt;
   }
 
   /**
@@ -829,6 +866,9 @@ export class RunManager {
    */
   private async landLocalRun(run: Run, code: number | null): Promise<void> {
     const wt = this.isolation.get(run.id);
+    // Ticket-branch runs commit straight onto the ticket branch in their worktree —
+    // there's no diff to apply, the branch already carries the work.
+    if (wt && !wt.ownsBranch) return this.finalizeTicketBranchRun(run, wt, code);
     let applied = false;
     let landFailed = false;
     if (wt && code === 0) {
@@ -891,13 +931,48 @@ export class RunManager {
     this.finish(run, code === 0 ? "done" : "failed", code);
   }
 
-  /** Tear down a run's isolated worktree and snapshot ref (best-effort, idempotent). */
+  /**
+   * Finalize a per-ticket run: its commits already live on the ticket branch (the
+   * worktree was checked out on it), so there's no patch to apply — we just sweep
+   * up anything left uncommitted and report. The branch survives teardown, so a
+   * dead/failed run leaves its work on the branch for a re-run to continue from.
+   */
+  private async finalizeTicketBranchRun(run: Run, wt: RunWorktree, code: number | null): Promise<void> {
+    run.branch = wt.branch;
+    if (code === 0) {
+      try {
+        const { message, trailer } = guestLandMessage(undefined, run.ticketTitle, run.companion);
+        const { commits } = await commitTicketWork(wt.dir, wt.baseSha, { message, trailer });
+        if (commits > 0) {
+          this.append(
+            run,
+            "system",
+            `✓ ${commits} commit(s) on branch ${wt.branch} — \`git merge ${wt.branch}\` to bring them into your branch`,
+          );
+          await updateTicket(run.projectRoot, run.ticketId, { state: "review" }).catch(() => undefined);
+        } else {
+          this.append(run, "system", `ℹ agent made no new commits on ${wt.branch}.`);
+        }
+      } catch (e) {
+        this.append(run, "system", `✖ failed to finalize the ticket branch: ${(e as Error).message}`);
+      }
+    }
+    this.finish(run, code === 0 ? "done" : "failed", code);
+  }
+
+  /** Tear down a run's isolated worktree (best-effort, idempotent). A ticket-branch
+   *  worktree keeps its (shared) branch so a re-run can resume from it; a snapshot
+   *  worktree's throwaway branch and snapshot ref are dropped. */
   private async teardownIsolation(runId: string, projectRoot: string): Promise<void> {
     const wt = this.isolation.get(runId);
     if (!wt) return;
     this.isolation.delete(runId);
-    await removeRunWorktree(projectRoot, wt.dir, wt.branch).catch(() => undefined);
-    await releaseSnapshotRef(projectRoot, runId).catch(() => undefined);
+    if (wt.ownsBranch) {
+      await removeRunWorktree(projectRoot, wt.dir, wt.branch).catch(() => undefined);
+      await releaseSnapshotRef(projectRoot, runId).catch(() => undefined);
+    } else {
+      await removeTicketWorktree(projectRoot, wt.dir).catch(() => undefined);
+    }
   }
 
   stop(id: string): boolean {
