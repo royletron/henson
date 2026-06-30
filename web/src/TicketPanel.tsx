@@ -13,7 +13,7 @@ import {
   type TicketState,
 } from "./api";
 import { useAsync } from "./hooks";
-import { LiveDot, RunTimer, RunMachine } from "./ui";
+import { LiveDot, RunTimer, RunMachine, SubtaskList } from "./ui";
 import { Lock } from "lucide-preact";
 import type { AppEvent } from "./App";
 
@@ -173,6 +173,12 @@ export function TicketPanel({
             blockedBy={blockedBy}
             onChange={setBlockedBy}
           />
+
+          {isEdit && ticket?.subtasks?.length ? (
+            <div class="mt-4">
+              <SubtaskList subtasks={ticket.subtasks} />
+            </div>
+          ) : null}
 
           {err && <p class="mt-2 text-sm text-red-400">{err}</p>}
 

@@ -11,7 +11,7 @@ import {
   type Ticket,
 } from "./api";
 import { useAsync, useRunStream, navigate } from "./hooks";
-import { ErrorBox, LiveDot, Loading, RunTimer, CloudGlyph, RunMachine } from "./ui";
+import { ErrorBox, LiveDot, Loading, RunTimer, CloudGlyph, RunMachine, SubtaskList } from "./ui";
 import { Avatar } from "./Avatar";
 import { AgentLog, AgentThinking } from "./AgentLog";
 import { ChevronDown, ChevronUp } from "lucide-preact";
@@ -327,6 +327,11 @@ export function TicketPage({
               </div>
             </div>
           )}
+        </div>
+      ) : null}
+      {ticket.subtasks?.length ? (
+        <div class="mt-3 border-t border-zinc-800 pt-3">
+          <SubtaskList subtasks={ticket.subtasks} />
         </div>
       ) : null}
       <label class="field-label">Description</label>

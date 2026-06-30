@@ -1,6 +1,7 @@
 import type { ComponentChildren } from "preact";
-import { runElapsed, type RunStatus } from "./api";
+import { runElapsed, type RunStatus, type Subtask } from "./api";
 import { useNow } from "./hooks";
+import { CheckCircle2, Circle, ListChecks } from "lucide-preact";
 
 export function Modal({ children, onClose }: { children: ComponentChildren; onClose: () => void }) {
   return (
@@ -96,6 +97,67 @@ export function RunTimer({
       {prefix}
       {label}
     </span>
+  );
+}
+
+/** How many of a ticket's subtasks are done, or null when there are none. */
+export function subtaskProgress(subtasks?: Subtask[]): { done: number; total: number } | null {
+  if (!subtasks?.length) return null;
+  return { done: subtasks.filter((s) => s.done).length, total: subtasks.length };
+}
+
+/** Compact "✓ 2/5" badge for a ticket's subtask progress; renders nothing when
+ *  the ticket has no breakdown. Sits among the tags on a board card. */
+export function SubtaskBadge({ subtasks }: { subtasks?: Subtask[] }) {
+  const p = subtaskProgress(subtasks);
+  if (!p) return null;
+  const complete = p.done === p.total;
+  return (
+    <span
+      class={`tag inline-flex items-center gap-1 ${complete ? "text-emerald-400" : "text-zinc-300"}`}
+      title={`${p.done} of ${p.total} subtasks done`}
+    >
+      <ListChecks size={11} /> {p.done}/{p.total}
+    </span>
+  );
+}
+
+/** The ticket's subtask checklist with a progress bar — the resumable steps it's
+ *  been broken into, with completed ones ticked. Renders nothing without a breakdown. */
+export function SubtaskList({ subtasks }: { subtasks?: Subtask[] }) {
+  const p = subtaskProgress(subtasks);
+  if (!p || !subtasks) return null;
+  const pct = Math.round((p.done / p.total) * 100);
+  const complete = p.done === p.total;
+  return (
+    <div>
+      <div class="mb-1.5 flex items-center justify-between text-xs">
+        <span class="inline-flex items-center gap-1.5 text-zinc-400">
+          <ListChecks size={13} /> Subtasks
+        </span>
+        <span class={complete ? "text-emerald-400" : "text-zinc-400"}>
+          {p.done}/{p.total} done
+        </span>
+      </div>
+      <div class="mb-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+        <div
+          class={`h-full rounded-full transition-all ${complete ? "bg-emerald-500" : "bg-violet-500"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <ol class="flex flex-col gap-1 text-sm">
+        {subtasks.map((s, i) => (
+          <li key={i} class="flex items-start gap-2">
+            {s.done ? (
+              <CheckCircle2 size={15} class="mt-0.5 shrink-0 text-emerald-400" />
+            ) : (
+              <Circle size={15} class="mt-0.5 shrink-0 text-zinc-600" />
+            )}
+            <span class={s.done ? "text-zinc-500 line-through" : "text-zinc-200"}>{s.title}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 

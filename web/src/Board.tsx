@@ -12,7 +12,7 @@ import {
 import { navigate, useNow } from "./hooks";
 import { pushToast } from "./Toast";
 import { Avatar } from "./Avatar";
-import { LiveDot, CloudGlyph } from "./ui";
+import { LiveDot, CloudGlyph, SubtaskBadge } from "./ui";
 import { Loader2, MoreHorizontal, Lock } from "lucide-preact";
 
 export function Board({
@@ -308,6 +308,7 @@ function TicketCard({
             <CloudGlyph size={11} /> {guestLabel}
           </span>
         )}
+        <SubtaskBadge subtasks={t.subtasks} />
         {companion ? (
           <span class="tag inline-flex items-center gap-1">
             <Avatar companion={companion} size={14} /> {companion.name}

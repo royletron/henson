@@ -19,6 +19,12 @@ export interface TicketRef {
   state: TicketState;
 }
 
+/** One resumable step of a larger ticket (mirrors core Subtask). */
+export interface Subtask {
+  title: string;
+  done: boolean;
+}
+
 export interface Ticket {
   id: string;
   title: string;
@@ -43,6 +49,8 @@ export interface Ticket {
   blocks?: TicketRef[];
   /** True while a dependency hasn't landed in main yet — paused in the queue. */
   blocked?: boolean;
+  /** Ordered breakdown into small, independently-committable steps; absent for small tickets. */
+  subtasks?: Subtask[];
 }
 
 export interface Companion {
